@@ -38,16 +38,45 @@ document.addEventListener('keydown', (e: KeyboardEvent) => {
     if (e.key === 'Escape') closeModal();
 });
 
-contactForm.addEventListener('submit', (e: SubmitEvent) => {
+contactForm.addEventListener('submit', async (e: SubmitEvent) => {
     e.preventDefault();
-    contactForm.style.display = 'none';
-    formSuccess.classList.add('visible');
-    setTimeout(() => {
-        closeModal();
-        contactForm.reset();
-        contactForm.style.display = '';
-        formSuccess.classList.remove('visible');
-    }, 2500);
+
+    const submitBtn = contactForm.querySelector<HTMLButtonElement>('.submit-btn')!;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending...';
+
+    const body = {
+        name: (document.getElementById('formName') as HTMLInputElement).value,
+        email: (document.getElementById('formEmail') as HTMLInputElement).value,
+        phone: (document.getElementById('formPhone') as HTMLInputElement).value,
+        goal: (document.getElementById('formGoal') as HTMLSelectElement).value,
+        message: (document.getElementById('formMessage') as HTMLTextAreaElement).value,
+    };
+
+    try {
+        const res = await fetch('/api/contact', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+
+        if (!res.ok) throw new Error('Server error');
+
+        contactForm.style.display = 'none';
+        formSuccess.classList.add('visible');
+        setTimeout(() => {
+            closeModal();
+            contactForm.reset();
+            contactForm.style.display = '';
+            formSuccess.classList.remove('visible');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Send Message <i class="bx bx-send"></i>';
+        }, 2500);
+    } catch {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Send Message <i class="bx bx-send"></i>';
+        alert('Something went wrong. Please try again.');
+    }
 });
 
 /* Menu Toggle */
