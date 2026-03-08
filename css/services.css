@@ -1,0 +1,44 @@
+/* ============================================================
+   Services
+   ============================================================ */
+
+.services {
+    background: var(--snd-bg-color);
+}
+
+.services-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, auto));
+    align-items: center;
+    gap: 2.3rem;
+    margin-top: 4.1rem;
+}
+
+.row {
+    background: var(--bg-color);
+    border-radius: 27px;
+    border: 1px solid transparent;
+    box-shadow: 0 0 5px var(--main-color);
+    padding: 20px;
+    transition: all 0.5s ease;
+}
+
+.row img {
+    width: 100%;
+    height: auto;
+    border-radius: 27px;
+    margin-bottom: 1.4rem;
+}
+
+.row h4 {
+    font-size: 25px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    line-height: 1.4;
+}
+
+.row:hover {
+    border-color: var(--main-color);
+    transform: translateY(-5px) scale(1.04);
+    cursor: pointer;
+}

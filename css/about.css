@@ -1,0 +1,40 @@
+/* ============================================================
+   About
+   ============================================================ */
+
+.about {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+}
+
+.about-img img {
+    width: 50vw;
+    border: 2px solid var(--text-color);
+    border-radius: 1rem;
+    transition: 0.5s ease;
+}
+
+.about-img img:hover {
+    transform: scale(1.01);
+    border-color: var(--main-color);
+}
+
+.about-content {
+    padding: 0 3rem;
+}
+
+.about-content .heading {
+    font-size: 6rem;
+}
+
+.about-content h2 {
+    text-align: left;
+    line-height: 1.2;
+}
+
+.about-content p {
+    font-size: 1.6rem;
+    margin: 2rem 0;
+}

@@ -1,0 +1,182 @@
+/* ============================================================
+   Contact Modal
+   ============================================================ */
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(6px);
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.modal-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.modal-box {
+    position: relative;
+    background: var(--snd-bg-color);
+    border: 1px solid var(--main-color);
+    border-radius: 2rem;
+    padding: 4rem;
+    width: 100%;
+    max-width: 54rem;
+    box-shadow: 0 0 40px rgba(232, 255, 71, 0.2);
+    transform: translateY(30px);
+    transition: transform 0.3s ease;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-overlay.active .modal-box {
+    transform: translateY(0);
+}
+
+.modal-close {
+    position: absolute;
+    top: 1.6rem;
+    right: 1.6rem;
+    background: transparent;
+    cursor: pointer;
+    color: var(--text-color);
+    font-size: 2.8rem;
+    line-height: 1;
+    transition: color 0.3s ease;
+}
+
+.modal-close:hover {
+    color: var(--main-color);
+}
+
+.modal-box h2 {
+    font-size: 3.6rem;
+    font-weight: 700;
+    margin-bottom: 0.8rem;
+}
+
+.modal-sub {
+    font-size: 1.5rem;
+    color: #aaa;
+    margin-bottom: 2.8rem;
+}
+
+.contact-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.6rem;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    background: var(--bg-color);
+    color: var(--text-color);
+    border: 1px solid #333;
+    border-radius: 1rem;
+    padding: 1.2rem 1.6rem;
+    font-size: 1.5rem;
+    font-family: inherit;
+    transition: border-color 0.3s ease;
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+    color: #666;
+}
+
+.form-group select option {
+    background: var(--bg-color);
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    border-color: var(--main-color);
+}
+
+.form-group textarea {
+    resize: vertical;
+    min-height: 10rem;
+}
+
+.submit-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.8rem;
+    padding: 1.2rem 2.8rem;
+    background: var(--main-color);
+    color: var(--bg-color);
+    border-radius: 1rem;
+    font-size: 1.6rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: box-shadow 0.3s ease, transform 0.2s ease;
+}
+
+.submit-btn:hover {
+    box-shadow: 0 0 18px var(--main-color);
+    transform: translateY(-2px);
+}
+
+.submit-btn i {
+    font-size: 1.8rem;
+}
+
+/* Success state */
+
+.form-success {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.6rem;
+    padding: 4rem 0 2rem;
+    text-align: center;
+}
+
+.form-success i {
+    font-size: 7rem;
+    color: var(--main-color);
+}
+
+.form-success p {
+    font-size: 2rem;
+    font-weight: 600;
+}
+
+.form-success.visible {
+    display: flex;
+}
+
+/* Scrollbar inside modal */
+
+.modal-box::-webkit-scrollbar {
+    width: 6px;
+}
+
+.modal-box::-webkit-scrollbar-thumb {
+    background: var(--main-color);
+    border-radius: 3px;
+}
+
+/* Responsive */
+
+@media (max-width: 500px) {
+    .modal-box {
+        padding: 3rem 2rem;
+    }
+
+    .modal-box h2 {
+        font-size: 2.8rem;
+    }
+}

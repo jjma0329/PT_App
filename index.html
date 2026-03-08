@@ -2,7 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="stylesheet" href="css/style.css" />
+    <link rel="stylesheet" href="https://unpkg.com/aos@next/dist/aos.css" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/header.css" />
+    <link rel="stylesheet" href="css/home.css" />
+    <link rel="stylesheet" href="css/services.css" />
+    <link rel="stylesheet" href="css/about.css" />
+    <link rel="stylesheet" href="css/plans.css" />
+    <link rel="stylesheet" href="css/reviews.css" />
+    <link rel="stylesheet" href="css/footer.css" />
+    <link rel="stylesheet" href="css/responsive.css" />
+    <link rel="stylesheet" href="css/contact.css" />
     <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>fitness-app</title>
@@ -25,14 +35,14 @@
       </ul>
 
       <div class="top-btn">
-        <a href="#contact" class="nav-btn">Book A Session</a>
+        <a href="#" class="nav-btn open-modal">Book A Session</a>
       </div>
 
     </header>
 
     <!-- Home Section Code -->
     <section class="home" id="home">
-      <div class="home-content">
+      <div class="home-content" data-aos="zoom-in"> 
 
         <h1>Train Smarter.</h1>
         <h1>Become Stronger.</h1>
@@ -40,20 +50,20 @@
 
         <p>I help busy people build sustainable strength and confidence — without the guesswork.</p>
 
-        <a href="#" class="book-btn">Book a session</a>
+        <a href="#" class="book-btn open-modal">Book a session</a>
 
       </div>
 
-      <div class="home-img">
+      <div class="home-img" data-aos="zoom-in">
         <img src="src/assets/heroImage.png" alt="Home Image">
       </div>
     </section>
 
      <!-- Service Section Code  -->
     <section class="services" id="services">
-      <h2 class="heading">Our <Span>Services</Span></h2>
+      <h2 class="heading" data-aos="zoom-in-down">Our <Span>Services</Span></h2>
 
-      <div class="services-content">
+      <div class="services-content" data-aos="zoom-in-up">
         <div class="row">
           <img src="src/assets/image1.jpg" alt="">
           <h4>Physical Fitness</h4>
@@ -84,11 +94,11 @@
     <!-- About Section Code  -->
 
     <section class="about" id="about">
-      <div class="about-img">
+      <div class="about-img" data-aos="zoom-in-down">
         <img src="src/assets/about.jpg" alt="">
       </div>
 
-      <div class="about-content">
+      <div class="about-content" data-aos="zoom-in-up">
         <h2 class="heading">About Me</h2>
 
         <p>I haven't always been the person you see in these photos; I’ve personally navigated the challenges of being both underweight and overweight at different stages of my life.</p>
@@ -96,15 +106,15 @@
         <p>My mission is to use that perspective to provide you with a professional, judgment-free space where your specific struggles are truly understood and respected.</p>
         <p>Together, we will move past the "one-size-fits-all" approach to build a sustainable lifestyle that honors where you are today while pushing you toward your strongest self.</p>
 
-        <a href="#" class="book-btn">Book a Free class</a>
+        <a href="#" class="book-btn open-modal">Book a Free class</a>
       </div>
     </section>
 
     <!-- Pricing Section Code  -->
      <section class="plans" id="plans">
-        <h2 class="heading">Session <span>Plans</span></h2>
+        <h2 class="heading" data-aos="zoom-in-down">Session <span>Plans</span></h2>
 
-        <div class="plans-content">
+        <div class="plans-content" data-aos="zoom-in-up">
 
           <div class="box">
             <h3>10 Sessions</h3>
@@ -121,10 +131,9 @@
             <h2><span>1000 NTD/Month</span></h2>
           </div>
 
-          <a href="#">
+          <a href="#" class="open-modal">
             Join Now
             <i class="bx bx-right-arrow-alt"></i>
-
           </a>
 
         </div>
@@ -133,9 +142,9 @@
      <!-- Review Section Code -->
       <section class="review" id="review">
         <div class="review-box">
-          <h2 class="heading">Client <span>Reviews</span></h2>
+          <h2 class="heading" data-aos="zoom-in-down">Client <span>Reviews</span></h2>
 
-          <div class="wrapper">
+          <div class="wrapper" data-aos="zoom-in-up">
             <div class="review-item">
               <img src="src/assets/1.jpg" alt="">
               <h2>Joseph</h2>
@@ -182,7 +191,7 @@
       </section>
 
       <!-- Footer Section -->
-       <footer class="footer">
+        <footer class="footer">
         <div class="social">
           <a href="#"><i class="bx bxl-facebook"></i></a>
           <a href="#"><i class="bx bxl-instagram"></i></a>
@@ -192,6 +201,54 @@
         <p class="copyright">
           &copy; JJM Fitness 2026 - All Rights Reserved
         </p>
-       </footer>
+        </footer>
+
+    <!-- Contact Modal -->
+    <div class="modal-overlay" id="contactModal">
+      <div class="modal-box">
+        <button class="modal-close" id="closeModal"><i class="bx bx-x"></i></button>
+        <h2>Book a <span>Session</span></h2>
+        <p class="modal-sub">Fill in your details and I'll get back to you within 24 hours.</p>
+        <form class="contact-form" id="contactForm">
+          <div class="form-group">
+            <input type="text" id="formName" placeholder="Your Name" required />
+          </div>
+          <div class="form-group">
+            <input type="email" id="formEmail" placeholder="Your Email" required />
+          </div>
+          <div class="form-group">
+            <input type="tel" id="formPhone" placeholder="Phone Number (optional)" />
+          </div>
+          <div class="form-group">
+            <select id="formGoal">
+              <option value="" disabled selected>Your Fitness Goal</option>
+              <option value="fat-loss">Fat Loss</option>
+              <option value="muscle-gain">Muscle / Weight Gain</option>
+              <option value="strength">Strength Training</option>
+              <option value="cardio">Cardio & Endurance</option>
+              <option value="general">General Fitness</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <textarea id="formMessage" rows="4" placeholder="Tell me a bit about your goals or any questions..."></textarea>
+          </div>
+          <button type="submit" class="submit-btn">Send Message <i class="bx bx-send"></i></button>
+        </form>
+        <div class="form-success" id="formSuccess">
+          <i class="bx bx-check-circle"></i>
+          <p>Thanks! I'll be in touch soon.</p>
+        </div>
+      </div>
+    </div>
+
+        <script src="https://unpkg.com/aos@next/dist/aos.js"></script>
+        <script>
+          AOS.init({
+            offset: 300,
+            duration: 1400,
+          });
+        </script>
+        <script src="https://unpkg.com/typed.js@3.0.0/dist/typed.umd.js"></script>
+        <script type="module" src="/src/script.ts"></script>
   </body>
 </html>
