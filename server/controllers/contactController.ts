@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '../../src/generated/prisma/index.js';
+import { PrismaClient } from '../../src/generated/prisma/client.ts';
+import { PrismaPg } from '@prisma/adapter-pg';
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const prisma = new PrismaClient({ adapter });
 
 export async function createContact(req: Request, res: Response): Promise<void> {
   const { name, email, phone, goal, message } = req.body;

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx prisma migrate dev --name init)",
+      "mcp__Neon__run_sql",
+      "Bash(npm install @prisma/adapter-pg)"
+    ]
+  }
+}
