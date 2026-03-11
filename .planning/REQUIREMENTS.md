@@ -83,12 +83,12 @@
 | MIGR-05 | Phase 1 | Pending |
 | SEC-01 | Phase 1 | Pending |
 | SEC-02 | Phase 1 | Pending |
-| SEC-03 | Phase 2 | Pending |
-| SEC-04 | Phase 2 | Pending |
+| SEC-03 | Phase 1 | Pending |
 | CAL-01 | Phase 2 | Pending |
 | CAL-02 | Phase 2 | Pending |
 | CAL-03 | Phase 2 | Pending |
 | CAL-04 | Phase 2 | Pending |
+| SEC-04 | Phase 3 | Pending |
 | CAL-05 | Phase 3 | Pending |
 | BOOK-01 | Phase 3 | Pending |
 | BOOK-02 | Phase 3 | Pending |
@@ -101,8 +101,8 @@
 **Coverage:**
 - v1 requirements: 17 total
 - Mapped to phases: 17
-- Unmapped: 0 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-11*
-*Last updated: 2026-03-11 after initial definition*
+*Last updated: 2026-03-11 after roadmap creation*
