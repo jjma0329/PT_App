@@ -8,17 +8,22 @@
     "server": "tsx watch server/index.ts",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.4.2",
     "@prisma/client": "^7.4.2",
+    "@tailwindcss/vite": "^4.2.1",
+    "clsx": "^2.1.1",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "resend": "^6.9.3"
+    "resend": "^6.9.3",
+    "tailwindcss": "^4.2.1",
+    "typed.js": "^3.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
