@@ -16,3 +16,12 @@ model ContactSubmission {
   message   String?
   createdAt DateTime @default(now())
 }
+
+model OAuthToken {
+  id           Int      @id @default(autoincrement())
+  provider     String   @default("google")
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  updatedAt    DateTime @updatedAt
+}
