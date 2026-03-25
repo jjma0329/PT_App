@@ -11,7 +11,16 @@
       "Bash(cd \"/mnt/c/Users/Jeffrey Ma/Documents/PT_App\" && node \"./.claude/get-shit-done/bin/gsd-tools.cjs\" commit \"docs: create roadmap \\(3 phases\\)\" --files .planning/ROADMAP.md .planning/STATE.md .planning/REQUIREMENTS.md)",
       "Bash(claude mcp:*)",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\(''''projects'''',{}\\).get\\(''''/mnt/c/Users/Jeffrey Ma/Documents/PT_App'''',{}\\), indent=2\\)\\)\")",
-      "Bash(printenv | grep -i GITHUB | sed 's/=.*/=***HIDDEN***/')"
+      "Bash(printenv | grep -i GITHUB | sed 's/=.*/=***HIDDEN***/')",
+      "Bash(git pull:*)",
+      "Skill(gsd:progress)",
+      "Skill(gsd:plan-phase)",
+      "Bash(cd:*)",
+      "Read(//mnt/c/Users/**)",
+      "Read(//mnt/c/Users/Jeffrey Ma/Documents/**)",
+      "Bash(ls /mnt/c/Users/Jeffrey Ma/Documents/*.md)",
+      "Bash(grep -i \"\\\\.md$\")",
+      "Skill(gsd:execute-phase)"
     ]
   }
 }
