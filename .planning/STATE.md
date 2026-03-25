@@ -5,33 +5,35 @@
 See: .planning/PROJECT.md (updated 2026-03-11)
 
 **Core value:** A visitor can discover the trainer, be impressed by the site, and book a session in under 2 minutes.
-**Current focus:** Phase 1 — React + Tailwind Migration
+**Current focus:** Phase 3 — Booking System
 
 ## Current Position
 
-Phase: 2 of 3 (Google Calendar Integration)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-03-11 — Phase 1 complete
+Phase: 3 of 3 (Booking System)
+Plan: 0 of 4 in current phase
+Status: Planned — ready to execute
+Last activity: 2026-03-25 — Phase 3 planned (4 plans, 4 waves)
 
-Progress: [███░░░░░░░] 33%
+Progress: [██████░░░░] 67%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
+- Total plans completed: 2 (backfilled)
 - Average duration: N/A
-- Total execution time: 0 hours
+- Total execution time: N/A
 
 **By Phase:**
 
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| - | - | - | - |
+| Phase | Plans | Status |
+|-------|-------|--------|
+| 1. React + Tailwind Migration | 1 | ✓ Complete (2026-03-11) |
+| 2. Google Calendar Integration | 1 | ✓ Complete (2026-03-15) |
+| 3. Booking System | 0/4 | Planned |
 
 **Recent Trend:**
-- Last 5 plans: N/A
-- Trend: N/A
+- Phase 1 complete: React + Tailwind migration + security baseline
+- Phase 2 complete: Google OAuth2, token persistence, /api/slots endpoint
 
 *Updated after each plan completion*
 
@@ -58,6 +60,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-11
-Stopped at: Phase 1 complete — React + Tailwind migration done, security baseline fixes applied
+Last session: 2026-03-25
+Stopped at: Phase 3 planned — 4 plans across 4 waves ready to execute
 Resume file: None
