@@ -3,24 +3,7 @@
     "allow": [
       "Bash(npx prisma migrate dev --name init)",
       "mcp__Neon__run_sql",
-      "Bash(npm install @prisma/adapter-pg)",
-      "Bash(cd \"/mnt/c/Users/Jeffrey Ma/Documents/PT_App\" && node \"./.claude/get-shit-done/bin/gsd-tools.cjs\" commit \"docs: map existing codebase\" --files .planning/codebase/STACK.md .planning/codebase/INTEGRATIONS.md .planning/codebase/ARCHITECTURE.md .planning/codebase/STRUCTURE.md .planning/codebase/CONVENTIONS.md .planning/codebase/TESTING.md .planning/codebase/CONCERNS.md)",
-      "Bash(cd \"/mnt/c/Users/Jeffrey Ma/Documents/PT_App\" && node \"./.claude/get-shit-done/bin/gsd-tools.cjs\" commit \"chore: add project config\" --files .planning/config.json)",
-      "Bash(node \"/mnt/c/Users/Jeffrey Ma/Documents/PT_App/.claude/get-shit-done/bin/gsd-tools.cjs\" commit \"docs: complete project research\" --files .planning/research/)",
-      "Bash(cd \"/mnt/c/Users/Jeffrey Ma/Documents/PT_App\" && node \"./.claude/get-shit-done/bin/gsd-tools.cjs\" commit \"docs: define v1 requirements\" --files .planning/REQUIREMENTS.md)",
-      "Bash(cd \"/mnt/c/Users/Jeffrey Ma/Documents/PT_App\" && node \"./.claude/get-shit-done/bin/gsd-tools.cjs\" commit \"docs: create roadmap \\(3 phases\\)\" --files .planning/ROADMAP.md .planning/STATE.md .planning/REQUIREMENTS.md)",
-      "Bash(claude mcp:*)",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\(''''projects'''',{}\\).get\\(''''/mnt/c/Users/Jeffrey Ma/Documents/PT_App'''',{}\\), indent=2\\)\\)\")",
-      "Bash(printenv | grep -i GITHUB | sed 's/=.*/=***HIDDEN***/')",
-      "Bash(git pull:*)",
-      "Skill(gsd:progress)",
-      "Skill(gsd:plan-phase)",
-      "Bash(cd:*)",
-      "Read(//mnt/c/Users/**)",
-      "Read(//mnt/c/Users/Jeffrey Ma/Documents/**)",
-      "Bash(ls /mnt/c/Users/Jeffrey Ma/Documents/*.md)",
-      "Bash(grep -i \"\\\\.md$\")",
-      "Skill(gsd:execute-phase)"
+      "Bash(npm install @prisma/adapter-pg)"
     ]
   }
 }

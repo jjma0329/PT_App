@@ -25,14 +25,3 @@ model OAuthToken {
   expiresAt    DateTime
   updatedAt    DateTime @updatedAt
 }
-
-model Booking {
-  id              Int      @id @default(autoincrement())
-  name            String
-  email           String
-  phone           String?
-  message         String?
-  slotTime        DateTime @unique  // DB-layer double-booking lock — P2002 fires on duplicate
-  calendarEventId String?           // populated after Calendar event created; null if creation failed
-  createdAt       DateTime @default(now())
-}
