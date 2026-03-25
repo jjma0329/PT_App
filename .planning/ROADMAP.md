@@ -51,7 +51,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Visitor sees an on-screen confirmation after a successful booking and receives a confirmation email
   4. Trainer receives a notification email with booking details and a new event appears in their Google Calendar
   5. A second booking attempt for the same slot is rejected (double-booking protection is enforced at the database and API layers)
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Add Booking model to Prisma schema + install express-rate-limit
+- [ ] 03-02-PLAN.md — Add createCalendarEvent (+ upgrade OAuth scope) and booking email functions
+- [ ] 03-03-PLAN.md — Create POST /api/bookings route + controller + rate limiting in server/index.ts
+- [ ] 03-04-PLAN.md — Wire BookingModal into App.tsx + end-to-end human verification
 
 ## Progress
 
@@ -62,4 +68,4 @@ Phases execute in numeric order: 1 → 2 → 3
 |-------|----------------|--------|-----------|
 | 1. React + Tailwind Migration | 0/TBD | Not started | - |
 | 2. Google Calendar Integration | 0/TBD | Not started | - |
-| 3. Booking System | 0/TBD | Not started | - |
+| 3. Booking System | 0/4 | Planned | - |
