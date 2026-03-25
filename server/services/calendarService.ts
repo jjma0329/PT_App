@@ -21,7 +21,10 @@ export function getAuthUrl(state: string): string {
   return client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: ['https://www.googleapis.com/auth/calendar.readonly'],
+    // calendar.events covers both reading free/busy AND creating events.
+    // Replacing calendar.readonly — trainer must re-run /auth/google once to
+    // get a new token with this broader scope.
+    scope: ['https://www.googleapis.com/auth/calendar.events'],
     state, // Google echoes this back in the callback so we can verify it
   });
 }
@@ -169,4 +172,42 @@ export async function getAvailableSlots(dateStr: string): Promise<string[]> {
   });
 
   return available.map((slot) => slot.toISOString());
+}
+
+interface BookingForCalendar {
+  name: string;
+  email: string;
+  phone?: string | null;
+  message?: string | null;
+  slotTime: Date;
+}
+
+// Creates a 1-hour event on the trainer's primary Google Calendar for a confirmed booking.
+// Called after the booking is saved to the DB — a failure here is non-fatal (the booking
+// still exists; the trainer just won't see it in the calendar automatically).
+export async function createCalendarEvent(booking: BookingForCalendar): Promise<void> {
+  const authClient = await getAuthenticatedClient();
+  const calendar = google.calendar({ version: 'v3', auth: authClient });
+
+  const sessionEnd = new Date(booking.slotTime.getTime() + 60 * 60 * 1000); // 1-hour session
+
+  // Build the description from whatever booking fields are present
+  const descriptionLines = [
+    `Client: ${booking.name}`,
+    `Email: ${booking.email}`,
+    booking.phone ? `Phone: ${booking.phone}` : null,
+    booking.message ? `Notes: ${booking.message}` : null,
+  ].filter((line): line is string => line !== null);
+
+  await calendar.events.insert({
+    calendarId: 'primary',
+    requestBody: {
+      summary: `PT Session — ${booking.name}`,
+      description: descriptionLines.join('\n'),
+      start: { dateTime: booking.slotTime.toISOString() },
+      end: { dateTime: sessionEnd.toISOString() },
+      // Adds the client as an attendee so Google sends them a calendar invite
+      attendees: [{ email: booking.email, displayName: booking.name }],
+    },
+  });
 }

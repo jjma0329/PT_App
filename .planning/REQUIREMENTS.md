@@ -88,15 +88,15 @@
 | CAL-02 | Phase 2 | Pending |
 | CAL-03 | Phase 2 | Pending |
 | CAL-04 | Phase 2 | Pending |
-| SEC-04 | Phase 3 | Pending |
-| CAL-05 | Phase 3 | Pending |
-| BOOK-01 | Phase 3 | Pending |
-| BOOK-02 | Phase 3 | Pending |
-| BOOK-03 | Phase 3 | Pending |
-| BOOK-04 | Phase 3 | Pending |
-| BOOK-05 | Phase 3 | Pending |
-| BOOK-06 | Phase 3 | Pending |
-| BOOK-07 | Phase 3 | Pending |
+| SEC-04 | Phase 3 | Complete |
+| CAL-05 | Phase 3 | Complete |
+| BOOK-01 | Phase 3 | Complete |
+| BOOK-02 | Phase 3 | Complete |
+| BOOK-03 | Phase 3 | Complete |
+| BOOK-04 | Phase 3 | Complete |
+| BOOK-05 | Phase 3 | Complete |
+| BOOK-06 | Phase 3 | Complete |
+| BOOK-07 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 17 total
