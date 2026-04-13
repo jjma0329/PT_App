@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma.ts';
-import { createCalendarEvent } from '../services/calendarService.ts';
-import { sendBookingConfirmation, sendBookingNotification } from '../services/emailService.ts';
+import { createCalendarEvent, deleteCalendarEvent } from '../services/calendarService.ts';
+import { sendBookingConfirmation, sendBookingNotification, sendCancellationNotification } from '../services/emailService.ts';
 
 // Returns true if the error is a Prisma unique constraint violation (P2002).
 // This is the DB-level double-booking protection — it fires if two requests
@@ -13,6 +13,21 @@ function isPrismaUniqueError(err: unknown): boolean {
     'code' in err &&
     err.code === 'P2002'
   );
+}
+
+// GET /api/bookings
+// Returns all bookings ordered by slotTime descending (most recent first).
+// Protected by requireApiKey middleware — trainer use only.
+export async function getBookings(req: Request, res: Response): Promise<void> {
+  try {
+    const bookings = await prisma.booking.findMany({
+      orderBy: { slotTime: 'desc' },
+    });
+    res.json({ success: true, data: bookings });
+  } catch (err) {
+    console.error('getBookings error:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch bookings.' });
+  }
 }
 
 // POST /api/bookings
@@ -70,10 +85,17 @@ export async function createBooking(req: Request, res: Response): Promise<void> 
       },
     });
 
-    // Create a Google Calendar event — non-fatal.
+    // Create a Google Calendar event and store its ID — non-fatal.
     // The booking is already saved; a calendar failure doesn't roll it back.
+    // We store the event ID so we can delete the event if the booking is cancelled.
     try {
-      await createCalendarEvent(booking);
+      const googleEventId = await createCalendarEvent(booking);
+      if (googleEventId) {
+        await prisma.booking.update({
+          where: { id: booking.id },
+          data: { googleEventId },
+        });
+      }
     } catch (calErr) {
       console.error('Google Calendar event creation failed:', calErr);
     }
@@ -97,6 +119,62 @@ export async function createBooking(req: Request, res: Response): Promise<void> 
       return;
     }
 
+    console.error('createBooking error:', err);
     res.status(500).json({ success: false, error: 'Failed to create booking.' });
+  }
+}
+
+// PATCH /api/bookings/:id/cancel
+// Sets the booking status to "cancelled", removes the Google Calendar event,
+// and sends a cancellation notification to the trainer.
+// Protected by requireApiKey — trainer use only.
+export async function cancelBooking(req: Request, res: Response): Promise<void> {
+  const id = parseInt(req.params.id, 10);
+
+  if (isNaN(id)) {
+    res.status(400).json({ success: false, error: 'Invalid booking ID.' });
+    return;
+  }
+
+  try {
+    const booking = await prisma.booking.findUnique({ where: { id } });
+
+    if (!booking) {
+      res.status(404).json({ success: false, error: 'Booking not found.' });
+      return;
+    }
+
+    if (booking.status === 'cancelled') {
+      res.status(409).json({ success: false, error: 'Booking is already cancelled.' });
+      return;
+    }
+
+    // Mark as cancelled in the DB — this is the source of truth
+    const updated = await prisma.booking.update({
+      where: { id },
+      data: { status: 'cancelled' },
+    });
+
+    // Delete the Google Calendar event — non-fatal.
+    // If the event was already deleted manually, Google returns 410 Gone — we log and move on.
+    if (booking.googleEventId) {
+      try {
+        await deleteCalendarEvent(booking.googleEventId);
+      } catch (calErr) {
+        console.error('Google Calendar event deletion failed:', calErr);
+      }
+    }
+
+    // Notify the trainer — non-fatal.
+    try {
+      await sendCancellationNotification(booking);
+    } catch (emailErr) {
+      console.error('Cancellation notification email failed:', emailErr);
+    }
+
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error('cancelBooking error:', err);
+    res.status(500).json({ success: false, error: 'Failed to cancel booking.' });
   }
 }

@@ -21,10 +21,11 @@ export function getAuthUrl(state: string): string {
   return client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    // calendar.events covers both reading free/busy AND creating events.
-    // Replacing calendar.readonly — trainer must re-run /auth/google once to
-    // get a new token with this broader scope.
-    scope: ['https://www.googleapis.com/auth/calendar.events'],
+    // calendar scope (full access) is required because we use two different APIs:
+    //   - freebusy.query requires calendar.readonly or calendar
+    //   - events.insert requires calendar.events or calendar
+    // calendar.events alone does NOT cover freebusy — use calendar to satisfy both.
+    scope: ['https://www.googleapis.com/auth/calendar'],
     state, // Google echoes this back in the callback so we can verify it
   });
 }
@@ -37,6 +38,20 @@ export async function saveTokensFromCode(code: string): Promise<void> {
 
   if (!tokens.access_token || !tokens.refresh_token) {
     throw new Error('Google did not return the expected tokens.');
+  }
+
+  // Verify Google actually granted the calendar.events scope.
+  // If the scope isn't registered in Google Cloud Console, Google silently
+  // grants a narrower scope (e.g. calendar.readonly) and we'd save a token
+  // that fails later on freebusy/event-create calls with "insufficient scopes".
+  const REQUIRED_SCOPE = 'https://www.googleapis.com/auth/calendar';
+  const grantedScopes = (tokens.scope ?? '').split(' ');
+  if (!grantedScopes.includes(REQUIRED_SCOPE)) {
+    throw new Error(
+      `Google did not grant the required scope (${REQUIRED_SCOPE}). ` +
+      `Granted: ${tokens.scope ?? 'none'}. ` +
+      'Add the scope in Google Cloud Console → OAuth consent screen → Scopes, then re-authorize.'
+    );
   }
 
   const expiresAt = new Date(tokens.expiry_date ?? Date.now() + 3600 * 1000);
@@ -62,8 +77,12 @@ export async function saveTokensFromCode(code: string): Promise<void> {
 // If the access token is expired (or about to expire within 5 min), it refreshes
 // automatically and saves the new access token back to the DB.
 export async function getAuthenticatedClient() {
+  // orderBy updatedAt desc ensures we always use the most recently saved token.
+  // Without this, findFirst returns an arbitrary row if multiple rows exist,
+  // which can cause scope errors if an old narrow-scope token is picked up.
   const stored = await prisma.oAuthToken.findFirst({
     where: { provider: 'google' },
+    orderBy: { updatedAt: 'desc' },
   });
 
   if (!stored) {
@@ -183,9 +202,11 @@ interface BookingForCalendar {
 }
 
 // Creates a 1-hour event on the trainer's primary Google Calendar for a confirmed booking.
-// Called after the booking is saved to the DB — a failure here is non-fatal (the booking
-// still exists; the trainer just won't see it in the calendar automatically).
-export async function createCalendarEvent(booking: BookingForCalendar): Promise<void> {
+// Returns the Google Calendar event ID so it can be stored on the Booking record
+// (needed later to delete the event if the booking is cancelled).
+// Returns null if the API call succeeds but Google doesn't return an ID (shouldn't happen,
+// but we avoid throwing so the caller can treat it as non-fatal).
+export async function createCalendarEvent(booking: BookingForCalendar): Promise<string | null> {
   const authClient = await getAuthenticatedClient();
   const calendar = google.calendar({ version: 'v3', auth: authClient });
 
@@ -199,7 +220,7 @@ export async function createCalendarEvent(booking: BookingForCalendar): Promise<
     booking.message ? `Notes: ${booking.message}` : null,
   ].filter((line): line is string => line !== null);
 
-  await calendar.events.insert({
+  const response = await calendar.events.insert({
     calendarId: 'primary',
     requestBody: {
       summary: `PT Session — ${booking.name}`,
@@ -210,4 +231,17 @@ export async function createCalendarEvent(booking: BookingForCalendar): Promise<
       attendees: [{ email: booking.email, displayName: booking.name }],
     },
   });
+
+  return response.data.id ?? null;
+}
+
+// Deletes a Google Calendar event by its event ID.
+// Called when a booking is cancelled — non-fatal at the call site.
+// If the event was already deleted manually, Google returns 410 Gone.
+// We let that surface as an error so the caller can log it, but it's
+// not a blocker — the DB cancellation still stands.
+export async function deleteCalendarEvent(eventId: string): Promise<void> {
+  const authClient = await getAuthenticatedClient();
+  const calendar = google.calendar({ version: 'v3', auth: authClient });
+  await calendar.events.delete({ calendarId: 'primary', eventId });
 }

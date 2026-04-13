@@ -27,12 +27,13 @@ model OAuthToken {
 }
 
 model Booking {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String
-  phone     String?
-  message   String?
-  slotTime  DateTime @unique // @unique enforces DB-level double-booking protection
-  status    String   @default("confirmed")
-  createdAt DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  name          String
+  email         String
+  phone         String?
+  message       String?
+  slotTime      DateTime @unique // @unique enforces DB-level double-booking protection
+  status        String   @default("confirmed")
+  googleEventId String?  // null if calendar event creation failed (non-fatal)
+  createdAt     DateTime @default(now())
 }

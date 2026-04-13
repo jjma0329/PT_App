@@ -90,6 +90,28 @@ export async function sendBookingNotification(booking: BookingDetails): Promise<
   });
 }
 
+// Sent to the trainer when they cancel a booking.
+export async function sendCancellationNotification(booking: BookingDetails): Promise<void> {
+  const formattedTime = formatSlotTime(booking.slotTime);
+
+  await resend.emails.send({
+    from: 'JJM Fitness <onboarding@resend.dev>',
+    to: process.env.TRAINER_EMAIL!,
+    subject: `Booking cancelled — ${escapeHtml(booking.name)} at ${escapeHtml(formattedTime)}`,
+    html: `
+      <h2>Booking Cancelled</h2>
+      <p>The following session has been cancelled:</p>
+      <table cellpadding="8" style="border-collapse:collapse;font-family:sans-serif;font-size:15px;">
+        <tr><td><strong>Client</strong></td><td>${escapeHtml(booking.name)}</td></tr>
+        <tr><td><strong>Email</strong></td><td>${escapeHtml(booking.email)}</td></tr>
+        <tr><td><strong>Phone</strong></td><td>${safeField(booking.phone)}</td></tr>
+        <tr><td><strong>Time</strong></td><td>${escapeHtml(formattedTime)}</td></tr>
+        <tr><td><strong>Notes</strong></td><td>${safeField(booking.message)}</td></tr>
+      </table>
+    `,
+  });
+}
+
 export async function sendContactAlert(contact: ContactDetails): Promise<void> {
   await resend.emails.send({
     from: 'JJM Fitness <onboarding@resend.dev>',
