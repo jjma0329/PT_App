@@ -3,6 +3,7 @@ import { cn } from '../lib/utils';
 
 interface HeaderProps {
   onOpenModal: () => void;
+  onOpenContact: () => void;
 }
 
 const navItems = [
@@ -13,13 +14,13 @@ const navItems = [
   { label: 'Review', href: '#review' },
 ];
 
-export function Header({ onOpenModal }: HeaderProps) {
+export function Header({ onOpenModal, onOpenContact }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const closeMenu = () => setMenuOpen(false);
 
   const handleContactClick = () => {
-    onOpenModal();
+    onOpenContact();
     closeMenu();
   };
 
@@ -50,7 +51,7 @@ export function Header({ onOpenModal }: HeaderProps) {
               key={label}
               href={href}
               onClick={closeMenu}
-              className="block px-6 py-3 md:p-0 text-zinc-300 hover:text-yellow-400 transition-colors font-medium"
+              className="block px-6 py-3 md:p-0 text-zinc-300 hover:text-yellow-400 transition-colors font-medium whitespace-nowrap"
             >
               {label}
             </a>

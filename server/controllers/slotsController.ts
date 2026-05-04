@@ -22,7 +22,8 @@ export async function getSlots(req: Request, res: Response): Promise<void> {
     const slots = await getAvailableSlots(date);
     res.json({ success: true, data: slots });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to fetch slots.';
-    res.status(500).json({ success: false, error: message });
+    // Log the real error server-side; never expose internal messages to clients
+    console.error('getSlots error:', err);
+    res.status(500).json({ success: false, error: 'Unable to fetch available slots.' });
   }
 }

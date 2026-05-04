@@ -18,7 +18,7 @@ The complete end-to-end booking experience:
 
 ```
 Browser
-└── src/App.tsx
+└── src/pages/LandingPage.tsx
     └── BookingModal.tsx          ← 4-step wizard (date → time → form → success)
         │
         │  Step 2: GET /api/slots?date=YYYY-MM-DD
@@ -27,46 +27,50 @@ Browser
         │  Step 3: POST /api/bookings
         │          body: { name, email, phone?, message?, slotTime }
         ▼
-Express Server (server/index.ts)
+Express Server (server/app.ts)
 ├── Rate limiter ──────────────── applied to all /api/* routes (SEC-04)
 └── /api/bookings → server/routes/bookings.ts
                         └── server/controllers/bookingController.ts
                                 │
+                                │ POST /api/bookings (public)
                                 │ 1. Validate: name, email, slotTime required
                                 │ 2. Check: is slot already booked? (API-level)
                                 │ 3. Save:   prisma.booking.create()
                                 │               └── PostgreSQL (Booking table)
                                 │               └── @unique on slotTime = DB-level guard
-                                │
                                 │ 4. (non-fatal) Create Google Calendar event
                                 │       └── server/services/calendarService.ts
                                 │               └── createCalendarEvent()
                                 │                       └── Google Calendar API
-                                │
                                 │ 5. (non-fatal) Send emails
                                 │       └── server/services/emailService.ts
-                                │               ├── sendBookingConfirmation() → visitor's inbox
-                                │               └── sendBookingNotification() → trainer's inbox
-                                │                       └── Resend API
+                                │               ├── sendBookingConfirmation() → visitor
+                                │               └── sendBookingNotification() → trainer
+                                │
+                                │ PATCH /api/bookings/:id/cancel (requireJwt)
+                                │ PATCH /api/bookings/:id/reschedule (requireJwt)
+                                │ GET   /api/bookings              (requireJwt)
+                                │       └── server/middleware/requireJwt.ts
                                 │
                                 └── respond: { success: true, data: booking }
 ```
 
 ---
 
-## Files Changed in Phase 3 + Cancellation
+## Files Changed in Phase 3
 
 | File | What changed |
 |------|-------------|
-| `prisma/schema.prisma` | Added `Booking` model; `googleEventId String?` added for cancellation support |
-| `server/routes/bookings.ts` | New file — GET (admin), POST (public), PATCH /:id/cancel (admin) |
-| `server/controllers/bookingController.ts` | `createBooking`, `getBookings`, `cancelBooking` |
-| `server/middleware/requireApiKey.ts` | New file — API key guard for trainer-only routes |
+| `prisma/schema.prisma` | Added `Booking` model with `@unique` on `slotTime`; `googleEventId String?` for cancellation |
+| `server/routes/bookings.ts` | New file — GET, POST, PATCH /:id/cancel, PATCH /:id/reschedule |
+| `server/controllers/bookingController.ts` | `createBooking`, `getBookings`, `cancelBooking`, `rescheduleBooking` |
+| `server/middleware/requireJwt.ts` | New file — JWT guard for trainer-only routes |
+| `server/app.ts` | New file — Express app, middleware, and all route mounts (split from `index.ts`) |
+| `server/index.ts` | Now only: start server + run hourly cron jobs for reminders and review requests |
 | `server/services/calendarService.ts` | Added `createCalendarEvent()` (returns event ID), `deleteCalendarEvent()` |
 | `server/services/emailService.ts` | Added `sendBookingConfirmation()`, `sendBookingNotification()`, `sendCancellationNotification()` |
-| `server/index.ts` | Added `express-rate-limit` + mounted `/api/bookings` route |
 | `src/components/BookingModal.tsx` | New file — the entire 4-step booking UI |
-| `src/App.tsx` | Wired `BookingModal` to all "Book a Session" CTA buttons |
+| `src/pages/LandingPage.tsx` | Moved modal state here from `App.tsx` when router was introduced |
 
 ---
 
@@ -74,15 +78,21 @@ Express Server (server/index.ts)
 
 ```prisma
 model Booking {
-  id            Int      @id @default(autoincrement())
-  name          String
-  email         String
-  phone         String?
-  message       String?
-  slotTime      DateTime @unique
-  status        String   @default("confirmed")
-  googleEventId String?
-  createdAt     DateTime @default(now())
+  id                   Int       @id @default(autoincrement())
+  name                 String
+  email                String
+  phone                String?
+  message              String?
+  slotTime             DateTime  @unique
+  status               String    @default("confirmed")
+  googleEventId        String?
+  reminderSentAt       DateTime?
+  reviewRequestSentAt  DateTime?
+  createdAt            DateTime  @default(now())
+
+  @@index([status, slotTime, reminderSentAt])
+  @@index([status, slotTime, reviewRequestSentAt])
+  @@index([email])
 }
 ```
 
@@ -92,6 +102,17 @@ The most important field is `slotTime @unique`. The `@unique` constraint means t
 - `@unique` — creates a unique index in PostgreSQL. Attempting to insert a duplicate raises a database error with code `P2002`
 - `status` — `"confirmed"` by default, set to `"cancelled"` when the trainer cancels
 - `googleEventId` — the Google Calendar event ID returned when the event is created. Stored so it can be deleted if the booking is cancelled. Nullable because calendar creation is non-fatal — if it fails, we have no ID to store.
+- `reminderSentAt` / `reviewRequestSentAt` — cron job sentinel fields; `null` means the email hasn't been sent yet. The hourly cron filters on `reminderSentAt: null` to find bookings that need a reminder.
+
+**`@@index` — query performance:**
+The three `@@index` directives tell PostgreSQL to build multi-column indexes. Without them, the reminder and review-request cron queries (`WHERE status = 'confirmed' AND slotTime BETWEEN ... AND reminderSentAt IS NULL`) would do a full table scan on every tick. The index makes those lookups nearly instant regardless of how many bookings accumulate. `@@index([email])` supports any future query that looks up a client's bookings by email address.
+
+**Running the migration:**
+After any schema change, run:
+```bash
+npx prisma migrate dev --name <description>
+```
+This creates a SQL migration file and applies it to your database. Prisma also regenerates the TypeScript client automatically.
 
 **Python analogy (SQLAlchemy):**
 ```python
@@ -108,7 +129,51 @@ class Booking(Base):
 
 ---
 
-## `server/index.ts` — Rate Limiting (SEC-04)
+## `server/app.ts` — Express App Setup + Rate Limiting + Security Headers
+
+Phase 3 split the Express setup out of `server/index.ts` into its own `server/app.ts` file. `index.ts` now only starts the server and schedules cron jobs. This separation lets tests import `app` directly without starting a real listener.
+
+### Startup environment validation
+
+```ts
+const REQUIRED_ENV_VARS = [
+  'DATABASE_URL', 'SESSION_SECRET', 'JWT_SECRET',
+  'RESEND_API', 'TRAINER_EMAIL', 'ADMIN_EMAIL',
+  'ADMIN_PASSWORD_HASH', 'OAUTH_CLIENT', 'OAUTH_SECRET', 'OAUTH_REDIRECT_URI',
+];
+
+const missing = REQUIRED_ENV_VARS.filter((v) => !process.env[v]);
+if (missing.length > 0) {
+  console.error(`[fatal] Missing required environment variables: ${missing.join(', ')}`);
+  process.exit(1);
+}
+```
+
+Before starting the server, `index.ts` checks that every required environment variable is present. If any are missing, it logs which ones and calls `process.exit(1)` — crashing immediately rather than starting up silently broken.
+
+**Why fail at startup instead of at runtime?**
+Without this guard, a misconfigured deploy (e.g. `SESSION_SECRET` not set) starts successfully, accepts traffic, and fails in subtle ways only when that path is exercised — `sendCancellationNotification` emails go to `undefined`, sessions sign with `undefined` as the secret, etc. Failing fast at startup makes misconfiguration obvious immediately rather than during a real user request.
+
+**Python analogy:** Like calling `os.environ['KEY']` (which raises `KeyError`) instead of `os.environ.get('KEY')` for required config — combined with a startup check that exits before the app binds to a port.
+
+### Security headers — `helmet`
+
+```ts
+import helmet from 'helmet';
+app.use(helmet());
+```
+
+`helmet` is a small middleware that adds a set of HTTP security headers to every response with sensible defaults:
+
+- `Content-Security-Policy` — restricts which resources the browser can load, limiting XSS impact
+- `X-Frame-Options: DENY` — prevents the page from being embedded in an `<iframe>` (clickjacking protection)
+- `X-Content-Type-Options: nosniff` — stops browsers from guessing the MIME type of a response
+- `Strict-Transport-Security` — tells browsers to only use HTTPS for this domain going forward
+- `Referrer-Policy` — controls how much URL info is sent in the `Referer` header
+
+One line, meaningful security improvement — it's the standard first middleware line in any production Express app.
+
+### Rate limiting
 
 ```ts
 const apiLimiter = rateLimit({
@@ -117,56 +182,90 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: 'Too many requests. Please try again later.' },
+  skip: () => process.env.NODE_ENV === 'test', // disabled during test suite
+});
+
+// Stricter limit for the login endpoint — prevents brute-force attacks
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { success: false, error: 'Too many login attempts. Please try again later.' },
+  skip: () => process.env.NODE_ENV === 'test',
 });
 
 app.use('/api', apiLimiter);
+app.use('/api/auth', loginLimiter, trainerAuthRouter);
 ```
 
-This middleware runs before any route handler. Every request to `/api/*` is counted per IP address. If an IP exceeds 20 requests in 15 minutes, subsequent requests receive `429 Too Many Requests`.
+Two rate limiters:
 
-**Why 20 requests?**
-A normal visitor booking a session makes approximately 3–4 API calls:
-- 1–2 calls to fetch slots for different dates
-- 1 call to POST the booking
+**`apiLimiter` (20/15 min)** — covers all `/api/*` routes. A normal visitor booking a session makes approximately 3–4 API calls (1–2 slot fetches + 1 booking POST), so 20 is a generous ceiling for legitimate use while stopping bots and spam scripts.
 
-So 20 is a generous ceiling for legitimate use, but will stop automated bots or spam scripts.
+**`loginLimiter` (5/15 min)** — applied only to `/api/auth` (the login endpoint). The general `apiLimiter` already applies, but 20 attempts is far too many for a login endpoint — a brute-force script could try 20 passwords every 15 minutes. 5 attempts is strict enough to block automated attacks while being completely invisible to a legitimate trainer.
 
 `standardHeaders: true` adds `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` headers to every response — useful for debugging.
 
-**Python analogy:** Like a Flask `@limiter.limit("20 per 15 minutes")` decorator applied to an entire blueprint.
+**Python analogy:** Like a Flask `@limiter.limit("20 per 15 minutes")` decorator applied to an entire blueprint, with a separate `@limiter.limit("5 per 15 minutes")` on the login view.
 
 ---
 
-## `server/middleware/requireApiKey.ts` — Admin Route Guard
+## `server/middleware/requireJwt.ts` — Trainer Auth Guard
 
 ```ts
-export function requireApiKey(req: Request, res: Response, next: NextFunction): void {
-  const key = req.headers['x-api-key'];
-  const expected = process.env.ADMIN_API_KEY;
+export function requireJwt(req: Request, res: Response, next: NextFunction): void {
+  const authHeader = req.headers.authorization;
 
-  if (!expected) {
-    res.status(503).json({ success: false, error: 'Admin access is not configured.' });
-    return;
-  }
-
-  if (!key || key !== expected) {
+  if (!authHeader?.startsWith('Bearer ')) {
     res.status(401).json({ success: false, error: 'Unauthorized.' });
     return;
   }
 
-  next();
+  const token = authHeader.slice(7); // strip 'Bearer '
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret) {
+    res.status(503).json({ success: false, error: 'Auth not configured.' });
+    return;
+  }
+
+  try {
+    jwt.verify(token, secret);
+    next();
+  } catch {
+    res.status(401).json({ success: false, error: 'Invalid or expired token.' });
+  }
 }
 ```
 
-A middleware function that protects trainer-only endpoints with a static API key.
+Protects trainer-only routes by verifying a JWT sent in the `Authorization` header as `Bearer <token>`.
 
-**Why an API key instead of sessions?** Sessions are good for browsers. An admin check of the bookings list is more of a server-to-server or direct API call (e.g. `curl -H "x-api-key: ..."`) — an API key is simpler and appropriate for a solo use case with no user login system.
+**Why JWT instead of a static API key?** A static API key never expires — if it leaks, the attacker has permanent access. A JWT is signed with a secret (`JWT_SECRET`) and carries an expiry timestamp. The library (`jsonwebtoken`) verifies both the signature and expiry in one call. The trainer logs in via `/admin/login`, receives a JWT, and the frontend stores it in `localStorage` and sends it with each admin request.
 
-**Fail closed:** If `ADMIN_API_KEY` isn't set in `.env`, the middleware returns `503 Service Unavailable` instead of allowing the request through. This prevents accidentally open admin routes in a misconfigured environment.
+**Fail closed:** If `JWT_SECRET` isn't set in `.env`, the middleware returns `503 Service Unavailable` rather than allowing requests through. This prevents accidentally open admin routes in a misconfigured environment.
 
-**`next()`:** In Express, middleware functions receive a third argument `next` — a function that passes control to the next handler in the chain. If `next()` is called, Express continues to the route handler (`getBookings`). If a response is sent instead, `next()` is not called and the chain stops.
+**`next()`:** In Express, middleware functions receive a third argument `next` — a function that passes control to the next handler in the chain. If `next()` is called, Express continues to the route handler. If a response is sent instead, `next()` is not called and the chain stops.
 
-**Python analogy:** Like a FastAPI `Depends(verify_api_key)` dependency, or a Flask `@requires_auth` decorator that aborts with 401.
+**Python analogy:** Like a FastAPI `Depends(verify_token)` dependency, or a Flask `@requires_auth` decorator that aborts with 401.
+
+**Middleware chain — how a request flows through the stack:**
+
+```
+Incoming request
+    ↓
+apiLimiter          ← applied to all /api/* routes in app.ts
+    │ too many requests → 429 (stop here)
+    ↓
+Router matches path
+    ↓
+requireJwt          ← only on protected routes (GET/PATCH /api/bookings)
+    │ missing/invalid token → 401 (stop here)
+    ↓
+Controller (getBookings / cancelBooking / etc.)
+    ↓
+Response sent
+
+Public routes (POST /api/bookings, GET /api/slots) skip requireJwt entirely.
+```
 
 ---
 
@@ -174,24 +273,32 @@ A middleware function that protects trainer-only endpoints with a static API key
 
 ```ts
 import { Router } from 'express';
-import { getBookings, createBooking } from '../controllers/bookingController.ts';
-import { requireApiKey } from '../middleware/requireApiKey.ts';
+import { getBookings, createBooking, cancelBooking, rescheduleBooking } from '../controllers/bookingController.ts';
+import { requireJwt } from '../middleware/requireJwt.ts';
 
 const router = Router();
 
-// GET /api/bookings — trainer-only, requires x-api-key header
-router.get('/', requireApiKey, getBookings);
+// GET /api/bookings — trainer-only, requires valid JWT
+router.get('/', requireJwt, getBookings);
 
 // POST /api/bookings — public (rate-limited at the app level)
 router.post('/', createBooking);
 
+// PATCH /api/bookings/:id/cancel — trainer-only, requires valid JWT
+router.patch('/:id/cancel', requireJwt, cancelBooking);
+
+// PATCH /api/bookings/:id/reschedule — trainer-only, requires valid JWT
+router.patch('/:id/reschedule', requireJwt, rescheduleBooking);
+
 export default router;
 ```
 
-Routes only map URLs to handlers — logic lives in the controller. When mounted at `/api/bookings` in `index.ts`:
+Routes only map URLs to handlers — logic lives in the controller. When mounted at `/api/bookings` in `app.ts`:
 
-- `GET /api/bookings` → checks API key → `getBookings`
+- `GET /api/bookings` → JWT check → `getBookings`
 - `POST /api/bookings` → open (rate-limited) → `createBooking`
+- `PATCH /api/bookings/:id/cancel` → JWT check → `cancelBooking`
+- `PATCH /api/bookings/:id/reschedule` → JWT check → `rescheduleBooking`
 
 Express route definitions accept multiple handler arguments: `router.get('/', middlewareA, middlewareB, handler)`. They run in order — if `middlewareA` sends a response (like a 401), `middlewareB` and `handler` never run.
 
@@ -217,7 +324,7 @@ export async function getBookings(req: Request, res: Response): Promise<void> {
 }
 ```
 
-Returns all bookings ordered by `slotTime` descending (most recent first). Protected upstream by `requireApiKey` — by the time this function runs, the key has already been verified.
+Returns all bookings ordered by `slotTime` descending (most recent first). Protected upstream by `requireJwt` — by the time this function runs, the JWT has already been verified.
 
 `findMany` with no `where` clause returns every row. `orderBy: { slotTime: 'desc' }` maps to `ORDER BY "slotTime" DESC` in SQL.
 
@@ -255,21 +362,76 @@ export async function cancelBooking(req: Request, res: Response): Promise<void> 
     await sendCancellationNotification(booking);
   } catch (emailErr) { console.error(...); }
 
+  // Notify client — non-fatal
+  try {
+    await sendClientCancellationEmail(booking);
+  } catch (emailErr) { console.error(...); }
+
   res.json({ success: true, data: updated });
 }
 ```
 
-**Three-stage cancellation — same non-fatal pattern as booking creation:**
+**Four-stage cancellation — same non-fatal pattern as booking creation:**
 
 1. **DB update** — the only fatal step. If this fails, we 500. Status is now `"cancelled"` in the source of truth.
 2. **Calendar delete** — non-fatal. If the event was already deleted manually in Google Calendar, the API returns 410 Gone. We log it but don't fail the request — the DB cancellation already happened.
-3. **Trainer notification email** — non-fatal. If Resend is down, the trainer at least has the DB record.
+3. **Trainer notification email** — non-fatal. Sends to `TRAINER_EMAIL` so the trainer knows one of their sessions was cancelled.
+4. **Client notification email** — non-fatal. Sends to the client's email address so they know the session is off. Without this, a client whose booking was cancelled by the trainer would have no notification and might show up anyway.
 
 **Why `PATCH /:id/cancel` instead of `DELETE /:id`?**
 `DELETE` implies removing the row. We keep cancelled bookings in the database as a record. `PATCH` means "partially update this resource." The `/cancel` suffix makes the intent unambiguous — there's no accidental cancellation from a generic PATCH with a wrong body.
 
 **Why check `googleEventId` before deleting?**
 Calendar event creation is non-fatal. If it failed when the booking was created, `googleEventId` is `null` — there's nothing to delete and we skip the call entirely.
+
+---
+
+### `rescheduleBooking` — PATCH /api/bookings/:id/reschedule
+
+```ts
+export async function rescheduleBooking(req: Request, res: Response): Promise<void> {
+  const id = parseInt(req.params.id, 10);
+  const { newSlotTime } = req.body as { newSlotTime?: string };
+
+  // ... validate id, newSlotTime, find booking, check not cancelled ...
+
+  // Reject if the trainer picked the same slot the booking already has
+  if (booking.slotTime.getTime() === newSlotDate.getTime()) {
+    res.status(409).json({ success: false, error: 'New slot is the same as the current slot.' });
+    return;
+  }
+
+  // Check that no other active booking already occupies the new slot.
+  const conflict = await prisma.booking.findFirst({
+    where: {
+      slotTime: newSlotDate,
+      id: { not: id },
+      status: { not: 'cancelled' },
+    },
+  });
+
+  if (conflict) { ... }
+
+  // Reset reminderSentAt so the 24h reminder fires again for the new time.
+  const updated = await prisma.booking.update({
+    where: { id },
+    data: { slotTime: newSlotDate, reminderSentAt: null },
+  });
+
+  // Replace calendar event — non-fatal (delete old, create new).
+  // Update booking with new googleEventId if creation succeeds.
+
+  res.json({ success: true, data: updated });
+}
+```
+
+Moves a confirmed booking to a new slot. Protected by `requireJwt` — trainer-only.
+
+**Conflict check differs from `cancelBooking`'s:** We use `findFirst` with `status: { not: 'cancelled' }` rather than `findUnique`. Why? A cancelled booking keeps its `slotTime` in the database (we don't delete rows). If we used `findUnique`, a cancelled booking on the same slot would incorrectly block the reschedule. By filtering out cancelled bookings, we only block on *active* conflicts.
+
+**`reminderSentAt: null`:** The reminder cron checks whether `reminderSentAt` is null before sending. If a booking was already reminded and then rescheduled, resetting this field ensures the client gets a fresh reminder 24h before the new time. Without this reset, the rescheduled booking would never get a reminder.
+
+**Calendar replacement — non-fatal:** The old event is deleted first (if `googleEventId` is set), then a new event is created for the new slot. Both steps are wrapped in individual `try/catch` blocks. If the delete or create fails (e.g. Google API is down), the booking's database record is still updated correctly — the calendar is a convenience, not the source of truth.
 
 ---
 
@@ -311,18 +473,35 @@ if (!name?.trim() || !email?.trim() || !slotTime) {
   res.status(400).json({ success: false, error: 'name, email, and slotTime are required.' });
   return;
 }
+
+if (name.trim().length > 100) { ... }    // 400 — name too long
+if (phone && phone.trim().length > 20) { ... }  // 400 — phone too long
+if (message && message.trim().length > 2000) { ... }  // 400 — message too long
 ```
 
 - `req.body as { ... }` — we cast the body to the expected shape. TypeScript can't know the body type at compile time; this is our declaration of what it should look like.
 - `name?.trim()` — the `?.` (optional chaining) calls `.trim()` only if `name` is not null/undefined. If `name` is missing, returns `undefined` (falsy). If `name` is `""` after trimming, also falsy. This catches both missing and whitespace-only submissions.
 - `return` after sending a response — **always required in Express controllers**. Without it, the function would continue to the next stage and try to send a second response, causing a runtime error.
 
+**Field length limits:**
+Without server-side limits, a client bypassing the browser could POST a 10 MB `message` field — which would be stored in the database and forwarded to Resend. Enforcing limits at the API boundary prevents oversized inputs from ever reaching the DB or email service.
+
 Then email format and date validity are also validated:
 ```ts
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const slotDate = new Date(slotTime);
 if (isNaN(slotDate.getTime())) { ... }  // invalid datetime string
+
+// Reject past-date slots — the frontend enforces a 2-day minimum, but this
+// catches direct API calls that bypass the UI
+if (slotDate <= new Date()) {
+  res.status(400).json({ success: false, error: 'slotTime must be a future date and time.' });
+  return;
+}
 ```
+
+**Why validate the date server-side when the frontend already enforces it?**
+The frontend's 2-day advance booking rule only protects normal browser users. A direct API call (`curl -X POST /api/bookings`) can supply any date, including past ones. The backend must never trust that frontend validation ran.
 
 ### Stage 2: API-Level Double-Booking Check
 
@@ -342,6 +521,24 @@ Checks the database for an existing booking at this exact datetime. Returns `409
 This handles the **common case** — someone trying to book a slot that was taken 2 minutes ago. It's fast (one indexed lookup) and returns a clear, user-friendly error message.
 
 **Why 409 and not 400?** HTTP 409 Conflict means "the request conflicts with the current state of the resource" — semantically more accurate than 400 Bad Request (which implies malformed input).
+
+**Why two layers of protection (API check + DB constraint)?**
+
+The API check handles the normal case. But there's a race condition the API check can't catch alone:
+
+```
+Without the DB @unique constraint:
+  Request A: findUnique → slot is free → starts writing...
+  Request B: findUnique → slot is free (A hasn't written yet!) → starts writing...
+  → Both writes succeed → two bookings for the same slot!
+
+With @unique on slotTime:
+  Request A writes successfully.
+  Request B's write is rejected by the DB with a unique constraint error (P2002).
+  → The outer catch block converts that into the same 409 response.
+```
+
+The API check is the fast path for user-friendly errors. The DB constraint is the safety net for race conditions that happen in milliseconds.
 
 ### Stage 3: Save to Database
 
@@ -389,6 +586,25 @@ try {
 ```
 
 Same pattern — separate `try/catch`, non-fatal. If Resend is unreachable, the booking still succeeds.
+
+### The Response — Safe Fields Only
+
+```ts
+res.status(201).json({
+  success: true,
+  data: {
+    id:       booking.id,
+    name:     booking.name,
+    email:    booking.email,
+    slotTime: booking.slotTime,
+    status:   booking.status,
+  },
+});
+```
+
+Rather than returning the full Prisma `Booking` object, only the fields a client needs are returned. This prevents leaking internal tracking fields (`googleEventId`, `reminderSentAt`, `reviewRequestSentAt`) that have no business being in a public API response. The `googleEventId` in particular would expose the trainer's Google Calendar provider and a usable event ID.
+
+**General rule:** always construct explicit response objects from public-safe fields rather than returning raw database rows.
 
 ### The Race Condition Handler
 
@@ -500,6 +716,14 @@ Formats the slot datetime for email display in the trainer's local timezone. `to
 **Why format in the trainer's timezone for emails?**
 The `slotTime` is stored in UTC in the database. The trainer reads their email in their local timezone. If `TRAINER_TIMEZONE` is set correctly, both parties see the same clock time even if the server runs in UTC.
 
+### `FROM_ADDRESS` — Configurable Sender
+
+```ts
+const FROM_ADDRESS = process.env.RESEND_FROM_EMAIL ?? 'JJM Fitness <onboarding@resend.dev>';
+```
+
+Every outbound email uses this constant as the `from` field. By reading from `RESEND_FROM_EMAIL` in `.env`, the sender can be overridden per environment without touching code. The fallback (`onboarding@resend.dev`) is Resend's shared sandbox address for development. In production, set `RESEND_FROM_EMAIL` to your verified domain (e.g. `JJM Fitness <noreply@jjmfitness.com>`) to avoid spam filters and present a professional sender.
+
 ### `sendBookingConfirmation(booking)` — To the Visitor
 
 Sends a confirmation email to the client's address with:
@@ -513,6 +737,21 @@ All user-supplied fields (`booking.name`, etc.) pass through `escapeHtml()` befo
 
 Sends a full booking summary to `process.env.TRAINER_EMAIL` including all fields (name, email, phone, time, notes).
 
+### `sendClientCancellationEmail(booking)` — To the Client on Cancel
+
+```ts
+export async function sendClientCancellationEmail(booking: BookingDetails): Promise<void> {
+  await resend.emails.send({
+    from: FROM_ADDRESS,
+    to: booking.email,
+    subject: `Your session on ${formattedTime} has been cancelled`,
+    html: `...`,
+  });
+}
+```
+
+Sent when the trainer cancels a booking. Without this email, a client who booked a session would have no notification and might show up to a cancelled appointment. The trainer's cancellation handler calls both `sendCancellationNotification` (to the trainer's own email as a record) and `sendClientCancellationEmail` (to the client), both non-fatal.
+
 ---
 
 ## `src/components/BookingModal.tsx` — The 4-Step Wizard
@@ -525,9 +764,9 @@ type Step = 'date' | 'time' | 'form' | 'success';
 const [step, setStep] = useState<Step>('date');
 const [selectedDate, setSelectedDate] = useState<string | null>(null);
 const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
-const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+const [slots, setSlots] = useState<string[]>([]);
 const [slotsLoading, setSlotsLoading] = useState(false);
-const [slotsError, setSlotsError] = useState<string | null>(null);
+const [slotsError, setSlotsError] = useState(false);   // boolean — true if the fetch failed
 const [formData, setFormData] = useState<FormData>(initialFormData);
 const [isSubmitting, setIsSubmitting] = useState(false);
 const [submitError, setSubmitError] = useState<string | null>(null);
@@ -608,15 +847,17 @@ null null null   1    2    3    4
 cells = [None] * first_day_offset + list(range(1, days_in_month + 1))
 ```
 
-**Disabled past days:**
+**Disabled dates (2-day advance rule):**
 ```ts
-const isPastDay = (day: number) => {
-  const d = new Date(viewYear, viewMonth, day);
-  return d < todayMidnight;
-};
+// Earliest selectable date: 2 calendar days from today (same rule as the backend)
+const _earliest = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2);
+const earliestBookableStr = toDateStr(_earliest.getFullYear(), _earliest.getMonth(), _earliest.getDate());
+
+// In the calendar grid:
+const isTooSoon = dateStr < earliestBookableStr;  // YYYY-MM-DD string comparison is safe
 ```
 
-Comparing `Date` objects in JavaScript works like Python's `datetime` comparison — `<` and `>` work directly.
+Any date before 2 calendar days from today is grayed out and unclickable. The cutoff is computed as a `YYYY-MM-DD` string so the comparison avoids timezone issues from `new Date('YYYY-MM-DD')` parsing as UTC. This matches the backend's `earliestBookable` logic in `getAvailableSlots` exactly — if the frontend let you pick a date, the backend would return zero slots for it anyway.
 
 **When a date is selected:**
 ```ts
@@ -746,10 +987,10 @@ Same pattern as `ContactModal`. `e.target` is what was clicked. `e.currentTarget
 
 ---
 
-## `src/App.tsx` — Wiring the Modal
+## `src/pages/LandingPage.tsx` — Wiring the Modal
 
 ```tsx
-export default function App() {
+export function LandingPage() {
   const [contactOpen, setContactOpen] = useState(false);
   const [bookingOpen, setBookingOpen] = useState(false);
 
@@ -769,9 +1010,9 @@ export default function App() {
 }
 ```
 
-Phase 3 adds a second modal state (`bookingOpen`) alongside the existing `contactOpen` from Phase 1. All "Book a Session" CTAs now open `BookingModal` instead of `ContactModal`.
+Phase 3 added `BookingModal` alongside the existing `ContactModal`. The modal state (`bookingOpen`) lives in `LandingPage` (which was `App` in Phase 1 before routing was introduced in Phase 4). All "Book a Session" CTAs open `BookingModal` by calling the `onOpenModal` prop passed down from `LandingPage`.
 
-Both modals are rendered at the root (`App`) level — not inside individual section components. This is "lifting state up" — the state lives at the highest point shared by all components that need it. Any component can open the modal by calling the callback passed as `onOpenModal`.
+Both modals are rendered at the `LandingPage` level — not inside individual section components. This is "lifting state up" — the state lives at the highest point shared by all components that need it.
 
 ---
 
@@ -824,11 +1065,11 @@ Visitor                   BookingModal                  Server                  
 
 ---
 
-## Trainer Setup Note: Re-Authorization Required
+## Trainer Setup Notes
 
-The Google Calendar OAuth scope was changed from `calendar.readonly` (Phase 2) to `calendar.events` (Phase 3). The old token in the database was issued with the narrower scope and **cannot create events**.
+**Re-authorization required after Phase 3 deploy:** The Google Calendar OAuth scope changed from `calendar.readonly` (Phase 2) to `calendar.events` (Phase 3). The old token cannot create or delete events. The trainer must visit `/auth/google` once — `upsert` in `saveTokensFromCode()` overwrites the old token automatically.
 
-After deploying Phase 3, the trainer must visit `/auth/google` once to re-authorize. The `upsert` in `saveTokensFromCode()` overwrites the old token automatically — no manual cleanup needed.
+**JWT-based auth replaces static API key:** Phase 3 replaced the `requireApiKey` middleware (which compared a header value against `ADMIN_API_KEY`) with `requireJwt`. The trainer now logs in at `/admin/login`, receives a signed JWT, and the frontend sends it as `Authorization: Bearer <token>` on all admin requests.
 
 ---
 

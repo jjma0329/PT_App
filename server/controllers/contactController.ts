@@ -11,14 +11,36 @@ export async function createContact(req: Request, res: Response): Promise<void> 
     message?: string;
   };
 
-  if (!name || !email) {
+  if (!name?.trim() || !email?.trim()) {
     res.status(400).json({ success: false, error: 'Name and email are required.' });
+    return;
+  }
+
+  if (name.trim().length > 100) {
+    res.status(400).json({ success: false, error: 'name must be 100 characters or fewer.' });
+    return;
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email.trim())) {
+    res.status(400).json({ success: false, error: 'Invalid email address.' });
+    return;
+  }
+
+  if (message && message.trim().length > 2000) {
+    res.status(400).json({ success: false, error: 'message must be 2000 characters or fewer.' });
     return;
   }
 
   try {
     const submission = await prisma.contactSubmission.create({
-      data: { name, email, phone: phone || null, goal: goal || null, message: message || null },
+      data: {
+        name:    name.trim(),
+        email:   email.trim().toLowerCase(),
+        phone:   phone?.trim() || null,
+        goal:    goal?.trim() || null,
+        message: message?.trim() || null,
+      },
     });
 
     try {

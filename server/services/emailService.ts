@@ -2,6 +2,10 @@ import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API);
 
+// Override in production once you have a verified Resend domain.
+// Dev default uses Resend's shared sandbox address.
+const FROM_ADDRESS = process.env.RESEND_FROM_EMAIL ?? 'JJM Fitness <onboarding@resend.dev>';
+
 interface ContactDetails {
   name: string;
   email: string;
@@ -51,7 +55,7 @@ export async function sendBookingConfirmation(booking: BookingDetails): Promise<
   const formattedTime = formatSlotTime(booking.slotTime);
 
   await resend.emails.send({
-    from: 'JJM Fitness <onboarding@resend.dev>',
+    from: FROM_ADDRESS,
     to: booking.email,
     subject: `Your session is confirmed — ${formattedTime}`,
     html: `
@@ -74,7 +78,7 @@ export async function sendBookingNotification(booking: BookingDetails): Promise<
   const formattedTime = formatSlotTime(booking.slotTime);
 
   await resend.emails.send({
-    from: 'JJM Fitness <onboarding@resend.dev>',
+    from: FROM_ADDRESS,
     to: process.env.TRAINER_EMAIL!,
     subject: `New booking — ${escapeHtml(booking.name)} at ${escapeHtml(formattedTime)}`,
     html: `
@@ -90,12 +94,30 @@ export async function sendBookingNotification(booking: BookingDetails): Promise<
   });
 }
 
+// Sent to the client 24 hours before their session as a reminder.
+export async function sendBookingReminder(booking: BookingDetails): Promise<void> {
+  const formattedTime = formatSlotTime(booking.slotTime);
+
+  await resend.emails.send({
+    from: FROM_ADDRESS,
+    to: booking.email,
+    subject: `Reminder: your session is tomorrow — ${formattedTime}`,
+    html: `
+      <h2>See you tomorrow!</h2>
+      <p>Hi ${escapeHtml(booking.name)},</p>
+      <p>This is a reminder that your personal training session is scheduled for:</p>
+      <p><strong>${escapeHtml(formattedTime)}</strong></p>
+      <p>If you need to cancel or reschedule, please contact the trainer as soon as possible.</p>
+    `,
+  });
+}
+
 // Sent to the trainer when they cancel a booking.
 export async function sendCancellationNotification(booking: BookingDetails): Promise<void> {
   const formattedTime = formatSlotTime(booking.slotTime);
 
   await resend.emails.send({
-    from: 'JJM Fitness <onboarding@resend.dev>',
+    from: FROM_ADDRESS,
     to: process.env.TRAINER_EMAIL!,
     subject: `Booking cancelled — ${escapeHtml(booking.name)} at ${escapeHtml(formattedTime)}`,
     html: `
@@ -112,9 +134,51 @@ export async function sendCancellationNotification(booking: BookingDetails): Pro
   });
 }
 
+// Sent to the client ~1 hour after their session ends, asking them to leave a review.
+// The link points to the public /review page on the site.
+export async function sendReviewRequest(booking: BookingDetails): Promise<void> {
+  const formattedTime = formatSlotTime(booking.slotTime);
+  const siteUrl = process.env.ALLOWED_ORIGIN ?? 'http://localhost:5173';
+
+  await resend.emails.send({
+    from: FROM_ADDRESS,
+    to: booking.email,
+    subject: 'How was your session? Leave a quick review',
+    html: `
+      <h2>Hope your session went well!</h2>
+      <p>Hi ${escapeHtml(booking.name)},</p>
+      <p>You recently trained with JJM Fitness on <strong>${escapeHtml(formattedTime)}</strong>.</p>
+      <p>It would mean a lot if you took 30 seconds to leave a review:</p>
+      <p>
+        <a href="${siteUrl}/review" style="display:inline-block;background:#facc15;color:#18181b;font-weight:bold;padding:10px 20px;border-radius:8px;text-decoration:none;">
+          Leave a review
+        </a>
+      </p>
+      <p style="color:#71717a;font-size:13px;">Thank you for training with us!</p>
+    `,
+  });
+}
+
+// Sent to the client when the trainer cancels their booking.
+export async function sendClientCancellationEmail(booking: BookingDetails): Promise<void> {
+  const formattedTime = formatSlotTime(booking.slotTime);
+
+  await resend.emails.send({
+    from: FROM_ADDRESS,
+    to: booking.email,
+    subject: `Your session on ${formattedTime} has been cancelled`,
+    html: `
+      <h2>Session Cancelled</h2>
+      <p>Hi ${escapeHtml(booking.name)},</p>
+      <p>Your personal training session scheduled for <strong>${escapeHtml(formattedTime)}</strong> has been cancelled.</p>
+      <p>Please contact the trainer directly if you'd like to reschedule.</p>
+    `,
+  });
+}
+
 export async function sendContactAlert(contact: ContactDetails): Promise<void> {
   await resend.emails.send({
-    from: 'JJM Fitness <onboarding@resend.dev>',
+    from: FROM_ADDRESS,
     to: process.env.TRAINER_EMAIL!,
     subject: `New session booking — ${escapeHtml(contact.name)}`,
     html: `

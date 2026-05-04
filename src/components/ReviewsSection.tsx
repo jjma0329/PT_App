@@ -1,11 +1,23 @@
-import rev1 from '../assets/1.jpg';
-import rev2 from '../assets/2.jpg';
-import rev3 from '../assets/3.jpg';
+import rev1 from '../assets/test1.png';
+import rev2 from '../assets/test2.jfif';
+import rev3 from '../assets/test3.png';
 
 const reviews = [
-  { img: rev1, name: 'Joseph', text: 'review here review here' },
-  { img: rev2, name: 'Yucheng', text: 'review here review here' },
-  { img: rev3, name: 'Alicia', text: 'review here review here' },
+  {
+    img: rev1,
+    name: 'James',
+    text: "I was a bit worried the sessions would be too 'rough and tumble' for a gentleman of my refined upbringing, but I was wrong! The core strength I've gained is simply marvelous—I can now hold a single rose between my teeth for hours without a single quiver! Plus, the trainer was surprisingly patient when I had to pause mid-squat to polish my favorite bottle caps. Such class! Such vigor!",
+  },
+  {
+    img: rev2,
+    name: 'Jessie',
+    text: "Finally, a trainer who understands that a silhouette as stunning as mine requires more than just chasing a yellow rat through the woods! This workout is intense, dramatic, and absolutely fabulous. My hair has never looked more aerodynamic during a tactical retreat, and my lung capacity for long-winded speeches has tripled! If you want to look this good while failing at world domination, you simply must sign up.",
+  },
+  {
+    img: rev3,
+    name: 'Meowth',
+    text: "I'm usually the one doin' the heavy liftin' for these two, but after workin' wit' dis trainer, I feel like a Persian in a Meowth's body! Me paws are quicker, me 'Fury Swipes' are actually scary now, and I got enough stamina to build a giant mechanical Magikarp without takin' a nap! It cost us a few paychecks we didn't exactly 'earn,' but hey—it's worth every penny!",
+  },
 ];
 
 function StarRating() {

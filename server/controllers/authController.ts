@@ -1,10 +1,12 @@
+import { randomBytes } from 'crypto';
 import { Request, Response } from 'express';
 import { getAuthUrl, saveTokensFromCode } from '../services/calendarService.ts';
 
 // Step 1: Redirect the trainer to Google's consent screen.
 // We store a random 'state' value in the session to verify the callback isn't forged.
 export function initiateAuth(req: Request, res: Response): void {
-  const state = Math.random().toString(36).slice(2);
+  // crypto.randomBytes gives 256 bits of entropy — Math.random() is not a CSPRNG
+  const state = randomBytes(32).toString('hex');
   req.session.oauthState = state;
 
   // Explicitly save the session before redirecting — without this, the session

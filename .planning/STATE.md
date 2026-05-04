@@ -45,6 +45,13 @@ Recent decisions affecting current work:
 - Google Calendar two-way sync: Trainer already uses Google Calendar; avoids building a custom availability manager
 - No client accounts for v1: Keeps booking simple; most PT clients book via simple form anyway
 
+### Roadmap Evolution
+
+- Phase 4 added: Trainer Auth + Admin UI (bcrypt login, 24h JWT, /admin route, booking list + cancel)
+- Phase 5 added: Booking Reminders (hourly cron, 24h reminder email, reminderSentAt tracking)
+- Phase 6 added: Rescheduling (trainer-only, updates DB + Google Calendar event)
+- Phase 7 added: Testimonials (post-session email, public submit endpoint, approval flow, landing page display)
+
 ### Pending Todos
 
 None yet.

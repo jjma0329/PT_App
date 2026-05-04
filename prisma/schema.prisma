@@ -27,13 +27,29 @@ model OAuthToken {
 }
 
 model Booking {
-  id            Int      @id @default(autoincrement())
-  name          String
-  email         String
-  phone         String?
-  message       String?
-  slotTime      DateTime @unique // @unique enforces DB-level double-booking protection
-  status        String   @default("confirmed")
-  googleEventId String?  // null if calendar event creation failed (non-fatal)
-  createdAt     DateTime @default(now())
+  id                   Int       @id @default(autoincrement())
+  name                 String
+  email                String
+  phone                String?
+  message              String?
+  slotTime             DateTime  @unique // @unique enforces DB-level double-booking protection
+  status               String    @default("confirmed")
+  googleEventId        String?   // null if calendar event creation failed (non-fatal)
+  reminderSentAt       DateTime? // stamped after the 24h reminder email is sent; null = not yet sent
+  reviewRequestSentAt  DateTime? // stamped after the post-session review request email is sent
+  createdAt            DateTime  @default(now())
+
+  // Indexes for cron job queries that filter by status + time + sentinel fields
+  @@index([status, slotTime, reminderSentAt])
+  @@index([status, slotTime, reviewRequestSentAt])
+  @@index([email])
+}
+
+model Testimonial {
+  id        Int      @id @default(autoincrement())
+  name      String
+  rating    Int      // 1–5 stars
+  message   String
+  approved  Boolean  @default(false) // trainer must approve before it appears publicly
+  createdAt DateTime @default(now())
 }

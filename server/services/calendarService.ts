@@ -169,15 +169,18 @@ export async function getAvailableSlots(dateStr: string): Promise<string[]> {
 
   const busyBlocks = freebusyResponse.data.calendars?.['primary']?.busy ?? [];
 
-  const fortyEightHoursFromNow = Date.now() + 48 * 60 * 60 * 1000;
+  // Earliest bookable moment: midnight at the start of the day 2 days from today.
+  // e.g. if today is May 3, slots on May 5 and later are allowed.
+  const today = new Date();
+  const earliestBookable = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2);
 
   // Filter candidates: keep only slots that are free and far enough in the future
   const available = candidates.filter((slot) => {
     const slotStart = slot.getTime();
     const slotEnd = slotStart + 60 * 60 * 1000; // 1-hour session
 
-    // Drop slots within 48 hours of now
-    if (slotStart < fortyEightHoursFromNow) return false;
+    // Drop slots before 2 days from today
+    if (slotStart < earliestBookable.getTime()) return false;
 
     // Drop slot if it overlaps any busy block
     const overlaps = busyBlocks.some((block) => {

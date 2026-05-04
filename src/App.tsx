@@ -1,33 +1,24 @@
-import { useState } from 'react';
-import { Header } from './components/Header';
-import { HeroSection } from './components/HeroSection';
-import { ServicesSection } from './components/ServicesSection';
-import { AboutSection } from './components/AboutSection';
-import { PlansSection } from './components/PlansSection';
-import { ReviewsSection } from './components/ReviewsSection';
-import { Footer } from './components/Footer';
-import { ContactModal } from './components/ContactModal';
-import { BookingModal } from './components/BookingModal';
+import { Routes, Route } from 'react-router-dom';
+import { LandingPage } from './pages/LandingPage';
+import { ReviewPage } from './pages/ReviewPage';
+import { AdminLoginPage } from './pages/admin/AdminLoginPage';
+import { AdminPage } from './pages/admin/AdminPage';
+import { ProtectedRoute } from './components/ProtectedRoute';
 
 export default function App() {
-  // contactOpen: general inquiry form (existing Phase 1 contact flow)
-  const [contactOpen, setContactOpen] = useState(false);
-  // bookingOpen: the Phase 3 booking flow (date → time → form → confirmation)
-  const [bookingOpen, setBookingOpen] = useState(false);
-
   return (
-    <>
-      <Header onOpenModal={() => setBookingOpen(true)} />
-      <main>
-        <HeroSection onOpenModal={() => setBookingOpen(true)} />
-        <ServicesSection />
-        <AboutSection onOpenModal={() => setBookingOpen(true)} />
-        <PlansSection onOpenModal={() => setBookingOpen(true)} />
-        <ReviewsSection />
-      </main>
-      <Footer />
-      <ContactModal isOpen={contactOpen} onClose={() => setContactOpen(false)} />
-      <BookingModal isOpen={bookingOpen} onClose={() => setBookingOpen(false)} />
-    </>
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/review" element={<ReviewPage />} />
+      <Route path="/admin/login" element={<AdminLoginPage />} />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <AdminPage />
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   );
 }

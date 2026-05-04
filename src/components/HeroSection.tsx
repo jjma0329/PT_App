@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import Typed from 'typed.js';
-import heroImage from '../assets/heroImage.png';
+import heroImage from '../assets/psyduck1.png';
 
 interface HeroSectionProps {
   onOpenModal: () => void;
@@ -24,12 +24,21 @@ export function HeroSection({ onOpenModal }: HeroSectionProps) {
   }, []);
 
   return (
-    <section
-      id="home"
-      className="min-h-screen flex items-center pt-20 bg-zinc-950"
-    >
-      <div className="max-w-7xl mx-auto px-6 md:px-10 w-full flex flex-col-reverse md:flex-row items-center gap-12 py-16">
-        <div className="flex-1 space-y-6 text-center md:text-left">
+    <section id="home" className="relative min-h-screen flex items-center">
+      {/* Full-bleed background image */}
+      <img
+        src={heroImage}
+        alt=""
+        aria-hidden="true"
+        className="absolute inset-0 w-full h-full object-cover object-center"
+      />
+
+      {/* Gradient overlay — strong on the left for text legibility, fades out to the right */}
+      <div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-zinc-950/80 to-zinc-950/10" />
+
+      {/* Content sits above the image and overlay */}
+      <div className="relative z-10 w-full px-6 md:px-16 lg:px-24 pt-24 pb-16">
+        <div className="max-w-2xl space-y-6">
           <h1 className="text-5xl md:text-7xl font-extrabold text-white leading-tight">
             Train <span className="text-yellow-400">Smarter.</span>
             <br />
@@ -40,7 +49,7 @@ export function HeroSection({ onOpenModal }: HeroSectionProps) {
             <span ref={typedRef} />
           </h3>
 
-          <p className="text-zinc-400 text-lg max-w-md mx-auto md:mx-0">
+          <p className="text-zinc-300 text-lg max-w-md">
             I help busy people build sustainable strength and confidence — without the guesswork.
           </p>
 
@@ -50,14 +59,6 @@ export function HeroSection({ onOpenModal }: HeroSectionProps) {
           >
             Book a Session
           </button>
-        </div>
-
-        <div className="flex-1 flex justify-center">
-          <img
-            src={heroImage}
-            alt="JJM Fitness trainer"
-            className="max-h-[560px] w-auto object-contain drop-shadow-2xl"
-          />
         </div>
       </div>
     </section>

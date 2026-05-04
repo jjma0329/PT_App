@@ -53,13 +53,60 @@ Decimal phases appear between their surrounding integers in numeric order.
   5. A second booking attempt for the same slot is rejected (double-booking protection is enforced at the database and API layers)
 **Plans**: TBD
 
+### Phase 4: Trainer Auth + Admin UI
+**Goal**: Trainer can log in via a protected /admin page, view all bookings with status filtering, and cancel bookings — without touching the terminal
+**Depends on**: Phase 3
+**Requirements**: AUTH-01, AUTH-02, ADMIN-01, ADMIN-02, ADMIN-03
+**Success Criteria** (what must be TRUE):
+  1. Trainer can log in at /admin/login with email + bcrypt-hashed password stored in .env; incorrect credentials are rejected
+  2. JWT (24h expiry, signed with secret) is issued on login and stored in localStorage; all admin API calls attach it as Bearer token
+  3. Unauthenticated requests to /admin/* redirect to /admin/login; JWT middleware returns 401 on invalid/expired tokens
+  4. Trainer can view all bookings at /admin, filter by status (confirmed / cancelled), and cancel a confirmed booking
+  5. requireApiKey middleware is replaced by JWT auth on all trainer-only routes
+**Plans**: TBD
+
+### Phase 5: Booking Reminders
+**Goal**: Clients automatically receive a reminder email 24 hours before their session, reducing no-shows without any manual trainer action
+**Depends on**: Phase 4
+**Requirements**: REMIND-01, REMIND-02, REMIND-03
+**Success Criteria** (what must be TRUE):
+  1. A cron job runs hourly and finds all confirmed bookings with slotTime between 23–25 hours from now and reminderSentAt IS NULL
+  2. A reminder email is sent to each matched client via Resend with the session date/time in the trainer's timezone
+  3. reminderSentAt is stamped on the booking after sending so the reminder is never sent twice
+**Plans**: TBD
+
+### Phase 6: Rescheduling
+**Goal**: Trainer can reschedule a confirmed booking to a new available slot from the admin UI, updating both the database and Google Calendar in one action
+**Depends on**: Phase 5
+**Requirements**: RESCHEDULE-01, RESCHEDULE-02, RESCHEDULE-03
+**Success Criteria** (what must be TRUE):
+  1. Trainer can select a new slot for an existing booking from the admin UI; the new slot must be available (not already booked)
+  2. The booking record is updated with the new slotTime; the old Google Calendar event is deleted and a new one is created
+  3. A rescheduled booking retains all original client details (name, email, phone, message)
+**Plans**: TBD
+
+### Phase 7: Testimonials
+**Goal**: After a session completes, the client receives a review request email; submitted testimonials are stored and displayed on the public landing page
+**Depends on**: Phase 6
+**Requirements**: TEST-01, TEST-02, TEST-03, TEST-04
+**Success Criteria** (what must be TRUE):
+  1. A cron job sends a review request email to clients 1 hour after their session slotTime passes (one-time, tracked by reviewRequestSentAt)
+  2. Client can submit a testimonial via a public POST /api/testimonials endpoint (name, rating, message)
+  3. Submitted testimonials are stored in the database and visible in the trainer's admin UI for approval
+  4. Approved testimonials appear in a Testimonials section on the public landing page
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3
+Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. React + Tailwind Migration | 0/TBD | Not started | - |
-| 2. Google Calendar Integration | 0/TBD | Not started | - |
-| 3. Booking System | 0/TBD | Not started | - |
+| 1. React + Tailwind Migration | 0/TBD | Complete | 2026-03-11 |
+| 2. Google Calendar Integration | 0/TBD | Complete | 2026-03-14 |
+| 3. Booking System | 0/TBD | Complete | 2026-03-18 |
+| 4. Trainer Auth + Admin UI | 0/TBD | Complete | 2026-04-15 |
+| 5. Booking Reminders | 0/TBD | Complete | 2026-04-16 |
+| 6. Rescheduling | 0/TBD | Complete | 2026-04-16 |
+| 7. Testimonials | 0/TBD | Complete | 2026-04-16 |

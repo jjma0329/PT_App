@@ -1,49 +1,50 @@
-import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import session from 'express-session';
-import rateLimit from 'express-rate-limit';
-import contactRouter from './routes/contact.js';
-import authRouter from './routes/auth.js';
-import slotsRouter from './routes/slots.js';
-import bookingsRouter from './routes/bookings.js';
+import cron from 'node-cron';
+import app from './app.ts';
+import { sendPendingReminders } from './services/reminderService.ts';
+import { sendPendingReviewRequests } from './services/reviewRequestService.ts';
 
-const app = express();
-const PORT = process.env.PORT || 3001;
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:5173';
+// Fail fast if any required env var is absent — better to crash at startup
+// than to silently misbehave on first use (e.g. sending emails to undefined).
+const REQUIRED_ENV_VARS = [
+  'DATABASE_URL',
+  'SESSION_SECRET',
+  'JWT_SECRET',
+  'RESEND_API',
+  'TRAINER_EMAIL',
+  'ADMIN_EMAIL',
+  'ADMIN_PASSWORD_HASH',
+  'OAUTH_CLIENT',
+  'OAUTH_SECRET',
+  'OAUTH_REDIRECT_URI',
+];
 
-app.use(cors({ origin: ALLOWED_ORIGIN }));
-app.use(express.json());
+const missing = REQUIRED_ENV_VARS.filter((v) => !process.env[v]);
+if (missing.length > 0) {
+  console.error(`[fatal] Missing required environment variables: ${missing.join(', ')}`);
+  process.exit(1);
+}
 
-// Rate limiting — applied to all /api/* routes (SEC-04).
-// 20 requests per 15 minutes per IP. Keeps form spam and brute-force attempts manageable
-// without blocking legitimate users (a normal visitor will make 2–3 API calls max).
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15-minute window
-  max: 20,
-  standardHeaders: true,  // Return rate limit info in RateLimit-* headers
-  legacyHeaders: false,
-  message: { success: false, error: 'Too many requests. Please try again later.' },
+process.on('uncaughtException', (err) => {
+  console.error('[fatal] uncaughtException:', err);
 });
 
-// Session middleware — used only to store the OAuth state param during the
-// auth redirect flow. The state is a short-lived CSRF token; nothing sensitive
-// is kept in the session long-term.
-app.use(session({
-  secret: process.env.SESSION_SECRET!,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    httpOnly: true,   // JS can't read the cookie — prevents XSS theft
-    secure: process.env.NODE_ENV === 'production', // HTTPS-only in prod
-    maxAge: 10 * 60 * 1000, // 10 minutes — enough to complete the OAuth flow
-  },
-}));
+process.on('unhandledRejection', (reason) => {
+  console.error('[fatal] unhandledRejection:', reason);
+});
 
-app.use('/api', apiLimiter);
-app.use('/api/contact', contactRouter);
-app.use('/api/slots', slotsRouter);
-app.use('/api/bookings', bookingsRouter);
-app.use('/auth', authRouter);
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Server listening on http://localhost:${PORT}`);
+});
 
-app.listen(PORT);
+// Run at the top of every hour: 0 * * * *
+// - Sends 24h reminder emails to upcoming confirmed bookings
+// - Sends post-session review request emails to completed bookings
+// Skipped in test environments to avoid side effects during the test suite.
+if (process.env.NODE_ENV !== 'test') {
+  cron.schedule('0 * * * *', async () => {
+    console.log('[cron] tick — processing reminders and review requests');
+    await sendPendingReminders();
+    await sendPendingReviewRequests();
+  });
+}
