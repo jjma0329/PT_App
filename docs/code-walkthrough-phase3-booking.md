@@ -90,6 +90,7 @@ model Booking {
   message              String?
   slotTime             DateTime  @unique
   status               String    @default("pending")
+  confirmedAt          DateTime? // null until trainer explicitly approves via admin UI
   googleEventId        String?
   reminderSentAt       DateTime?
   reviewRequestSentAt  DateTime?
@@ -106,6 +107,7 @@ The most important field is `slotTime @unique`. The `@unique` constraint means t
 - `String?` — the `?` means nullable/optional, same as `Optional[str]` in Python
 - `@unique` — creates a unique index in PostgreSQL. Attempting to insert a duplicate raises a database error with code `P2002`
 - `status` — `"pending"` by default (awaiting trainer approval); becomes `"confirmed"` when the trainer confirms via the admin UI, or `"cancelled"` when declined/cancelled
+- `confirmedAt` — `null` until the trainer explicitly approves. Used by the admin UI to filter the "confirmed" tab: only shows bookings where `confirmedAt IS NOT NULL`, which excludes any legacy auto-confirmed bookings that predate the two-step flow.
 - `googleEventId` — the Google Calendar event ID returned when the event is created. Stored so it can be deleted if the booking is cancelled. Nullable because calendar creation is non-fatal — if it fails, we have no ID to store.
 - `reminderSentAt` / `reviewRequestSentAt` — cron job sentinel fields; `null` means the email hasn't been sent yet. The hourly cron filters on `reminderSentAt: null` to find bookings that need a reminder.
 
@@ -405,10 +407,10 @@ export async function confirmBooking(req: Request, res: Response): Promise<void>
   if (!booking) { ... }                          // 404 if not found
   if (booking.status !== 'pending') { ... }      // 409 — only pending bookings can be confirmed
 
-  // Flip status to confirmed — source of truth
+  // Flip status to confirmed and stamp confirmedAt — source of truth
   const updated = await prisma.booking.update({
     where: { id },
-    data: { status: 'confirmed' },
+    data: { status: 'confirmed', confirmedAt: new Date() },
   });
 
   // Create Google Calendar event — deferred from createBooking, non-fatal

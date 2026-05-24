@@ -11,6 +11,7 @@ interface Booking {
   message: string | null;
   slotTime: string;
   status: string;
+  confirmedAt: string | null;
   createdAt: string;
 }
 
@@ -260,10 +261,22 @@ export function AdminPage() {
     setReschedulingId(null);
   };
 
-  const filtered = filter === 'all' ? bookings : bookings.filter(b => b.status === filter);
+  const now            = new Date();
   const pendingCount   = bookings.filter(b => b.status === 'pending').length;
-  const confirmedCount = bookings.filter(b => b.status === 'confirmed').length;
+  const confirmedCount = bookings.filter(b =>
+    b.status === 'confirmed' && b.confirmedAt !== null && new Date(b.slotTime) > now
+  ).length;
   const cancelledCount = bookings.filter(b => b.status === 'cancelled').length;
+  const filtered = filter === 'all'
+    ? bookings
+    : filter === 'confirmed'
+    // Confirmed tab: only upcoming sessions explicitly approved by admin (confirmedAt set + future slotTime)
+    ? bookings.filter(b =>
+        b.status === 'confirmed' &&
+        b.confirmedAt !== null &&
+        new Date(b.slotTime) > now
+      )
+    : bookings.filter(b => b.status === filter);
 
   const pendingTestimonialsCount = testimonials.filter(t => !t.approved).length;
 

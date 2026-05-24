@@ -347,10 +347,11 @@ export async function confirmBooking(req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Mark as confirmed — this is the source of truth
+    // Mark as confirmed and stamp confirmedAt — used to distinguish admin-approved
+    // bookings from legacy auto-confirmed ones in the admin UI filter.
     const updated = await prisma.booking.update({
       where: { id },
-      data: { status: 'confirmed' },
+      data: { status: 'confirmed', confirmedAt: new Date() },
     });
 
     // Create the Google Calendar event now that the booking is confirmed — non-fatal.

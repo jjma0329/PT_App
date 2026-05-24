@@ -34,6 +34,7 @@ model Booking {
   message              String?
   slotTime             DateTime  @unique // @unique enforces DB-level double-booking protection
   status               String    @default("pending")
+  confirmedAt          DateTime? // null until trainer explicitly approves; distinguishes admin-approved from legacy auto-confirmed
   googleEventId        String?   // null if calendar event creation failed (non-fatal)
   reminderSentAt       DateTime? // stamped after the 24h reminder email is sent; null = not yet sent
   reviewRequestSentAt  DateTime? // stamped after the post-session review request email is sent

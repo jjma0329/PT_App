@@ -411,10 +411,23 @@ useEffect(() => { fetchBookings(); }, [fetchBookings]);
 ### Filtering
 
 ```ts
-const filtered = filter === 'all' ? bookings : bookings.filter(b => b.status === filter);
+const now = new Date();
+const filtered = filter === 'all'
+  ? bookings
+  : filter === 'confirmed'
+  ? bookings.filter(b =>
+      b.status === 'confirmed' &&
+      b.confirmedAt !== null &&      // explicitly approved by admin (not legacy auto-confirmed)
+      new Date(b.slotTime) > now     // upcoming sessions only
+    )
+  : bookings.filter(b => b.status === filter);
 ```
 
-Filtering happens entirely on the frontend — no new API call for each filter change. All bookings are fetched once and the UI filters the local array. This is fast and avoids unnecessary server round-trips.
+Filtering happens entirely on the frontend — no new API call for each filter change. All bookings are fetched once and the UI filters the local array.
+
+The **confirmed** tab applies two extra conditions beyond `status === 'confirmed'`:
+- `confirmedAt !== null` — excludes any bookings that were auto-confirmed before the two-step flow was introduced (those have `confirmedAt = null`)
+- `new Date(b.slotTime) > now` — upcoming sessions only; past sessions fall off the list naturally once their slot passes
 
 ### Booking actions by status
 
