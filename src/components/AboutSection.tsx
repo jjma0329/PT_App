@@ -1,4 +1,4 @@
-import aboutImg from '../assets/service6.png';
+import aboutImg from '../assets/aboutme.jpg';
 
 interface AboutSectionProps {
   onOpenModal: () => void;

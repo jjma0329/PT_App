@@ -21,6 +21,23 @@ export function initiateAuth(req: Request, res: Response): void {
   });
 }
 
+// Returns the Google auth URL as JSON instead of redirecting.
+// Used by the admin UI — a browser navigation can't send an Authorization header,
+// so the frontend fetches this URL (with the JWT), then does window.location.href = url.
+export function getAuthUrlForClient(req: Request, res: Response): void {
+  const state = randomBytes(32).toString('hex');
+  req.session.oauthState = state;
+
+  req.session.save((err) => {
+    if (err) {
+      res.status(500).json({ success: false, error: 'Session error.' });
+      return;
+    }
+    const url = getAuthUrl(state);
+    res.json({ success: true, data: { url } });
+  });
+}
+
 // Step 2: Google redirects back here after the trainer grants (or denies) access.
 // We verify the state, exchange the code for tokens, and save them to the DB.
 export async function handleCallback(req: Request, res: Response): Promise<void> {

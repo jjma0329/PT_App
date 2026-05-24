@@ -2,13 +2,13 @@ import image1 from '../assets/service1.jpg';
 import image2 from '../assets/service2.png';
 import image3 from '../assets/service3.jpg';
 import image4 from '../assets/service4_crop.png';
-import image5 from '../assets/service5.jpg';
-import aboutImg from '../assets/service6.png';
+import image5 from '../assets/service5.png';
+import aboutImg from '../assets/service6.jpg';
 
 const services = [
   { img: image1, label: 'Physical Fitness' },
-  { img: image2, label: 'Weight Gain' },
-  { img: image3, label: 'Strength Training' },
+  { img: image3, label: 'Weight Gain' },
+  { img: image2, label: 'Strength Training' },
   { img: image4, label: 'Fat Loss', contain: true },
   { img: image5, label: 'Weight Training' },
   { img: aboutImg, label: 'Cardio' },
