@@ -23,7 +23,7 @@ interface Testimonial {
   createdAt: string;
 }
 
-type Filter = 'all' | 'confirmed' | 'cancelled';
+type Filter = 'all' | 'pending' | 'confirmed' | 'cancelled';
 type View   = 'bookings' | 'testimonials';
 
 // Format ISO datetime string for display in the admin UI
@@ -49,8 +49,12 @@ export function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // confirmingId: the booking awaiting cancel confirmation — shows inline confirm UI
+  const [reconnecting, setReconnecting] = useState(false);
+  const [reconnectError, setReconnectError] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<number | null>(null);
   const [cancellingId, setCancellingId] = useState<number | null>(null);
+  // approvingBookingId: the pending booking being confirmed (loading state)
+  const [approvingBookingId, setApprovingBookingId] = useState<number | null>(null);
   // reschedulingId: the booking whose reschedule panel is open
   const [reschedulingId, setReschedulingId] = useState<number | null>(null);
 
@@ -157,6 +161,38 @@ export function AdminPage() {
     navigate('/admin/login', { replace: true });
   };
 
+  // Fetches the Google OAuth URL from the server (with JWT auth), then redirects the
+  // browser there. A plain window.location.href = '/auth/google' won't work because
+  // the browser has no way to attach the Authorization header on navigation.
+  const handleReconnectGoogle = async () => {
+    setReconnecting(true);
+    setReconnectError(null);
+
+    try {
+      const res = await fetch('/auth/google/url', { headers: authHeaders() });
+
+      if (res.status === 401) {
+        removeToken();
+        navigate('/admin/login', { replace: true });
+        return;
+      }
+
+      const json = await res.json() as { success: boolean; data?: { url: string }; error?: string };
+
+      if (!json.success || !json.data?.url) {
+        setReconnectError(json.error ?? 'Could not get authorization URL.');
+        return;
+      }
+
+      // Navigate the browser to Google's consent screen — session cookie carries the state
+      window.location.href = json.data.url;
+    } catch {
+      setReconnectError('Network error. Could not start Google authorization.');
+    } finally {
+      setReconnecting(false);
+    }
+  };
+
   const handleCancel = async (id: number) => {
     setCancellingId(id);
 
@@ -188,6 +224,36 @@ export function AdminPage() {
     }
   };
 
+  const handleConfirmBooking = async (id: number) => {
+    setApprovingBookingId(id);
+
+    try {
+      const res = await fetch(`/api/bookings/${id}/confirm`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+      });
+
+      if (res.status === 401) {
+        removeToken();
+        navigate('/admin/login', { replace: true });
+        return;
+      }
+
+      const json = await res.json() as { success: boolean; data?: Booking; error?: string };
+      if (!json.success) {
+        setError(json.error ?? 'Failed to confirm booking.');
+        return;
+      }
+
+      // Update in place — flip status to confirmed without re-fetching
+      setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'confirmed' } : b));
+    } catch {
+      setError('Network error. Could not confirm booking.');
+    } finally {
+      setApprovingBookingId(null);
+    }
+  };
+
   const handleRescheduleSuccess = (updated: Booking) => {
     // Swap the updated booking in state and close the panel
     setBookings(prev => prev.map(b => b.id === updated.id ? updated : b));
@@ -195,6 +261,7 @@ export function AdminPage() {
   };
 
   const filtered = filter === 'all' ? bookings : bookings.filter(b => b.status === filter);
+  const pendingCount   = bookings.filter(b => b.status === 'pending').length;
   const confirmedCount = bookings.filter(b => b.status === 'confirmed').length;
   const cancelledCount = bookings.filter(b => b.status === 'cancelled').length;
 
@@ -209,12 +276,26 @@ export function AdminPage() {
           <h1 className="text-lg font-extrabold tracking-tight">JJM Fitness</h1>
           <p className="text-zinc-400 text-xs">Admin Dashboard</p>
         </div>
-        <button
-          onClick={handleLogout}
-          className="text-zinc-400 hover:text-white text-sm transition-colors"
-        >
-          Sign out
-        </button>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleReconnectGoogle}
+              disabled={reconnecting}
+              className="text-zinc-400 hover:text-white text-sm transition-colors disabled:opacity-50"
+            >
+              {reconnecting ? 'Connecting…' : 'Reconnect Google Calendar'}
+            </button>
+            <button
+              onClick={handleLogout}
+              className="text-zinc-400 hover:text-white text-sm transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
+          {reconnectError && (
+            <p className="text-red-400 text-xs">{reconnectError}</p>
+          )}
+        </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
@@ -232,7 +313,12 @@ export function AdminPage() {
               }`}
             >
               {v}
-              {/* Badge showing pending testimonials count */}
+              {/* Badge showing pending bookings or testimonials needing action */}
+              {v === 'bookings' && pendingCount > 0 && (
+                <span className="ml-2 bg-yellow-400 text-zinc-900 text-xs rounded-full px-1.5 py-0.5">
+                  {pendingCount}
+                </span>
+              )}
               {v === 'testimonials' && pendingTestimonialsCount > 0 && (
                 <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">
                   {pendingTestimonialsCount}
@@ -246,9 +332,10 @@ export function AdminPage() {
         {view === 'bookings' && (
           <>
             {/* Summary stats */}
-            <div className="grid grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-4 gap-4 mb-8">
               {[
                 { label: 'Total',     value: bookings.length },
+                { label: 'Pending',   value: pendingCount },
                 { label: 'Confirmed', value: confirmedCount },
                 { label: 'Cancelled', value: cancelledCount },
               ].map(stat => (
@@ -261,7 +348,7 @@ export function AdminPage() {
 
             {/* Status filter tabs */}
             <div className="flex gap-2 mb-6">
-              {(['all', 'confirmed', 'cancelled'] as Filter[]).map(f => (
+              {(['all', 'pending', 'confirmed', 'cancelled'] as Filter[]).map(f => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
@@ -307,6 +394,8 @@ export function AdminPage() {
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                             booking.status === 'confirmed'
                               ? 'bg-green-500/15 text-green-400'
+                              : booking.status === 'pending'
+                              ? 'bg-yellow-400/15 text-yellow-400'
                               : 'bg-zinc-600 text-zinc-400'
                           }`}>
                             {booking.status}
@@ -322,53 +411,96 @@ export function AdminPage() {
                         )}
                       </div>
 
-                      {/* Actions — only shown for confirmed bookings */}
-                      {booking.status === 'confirmed' && (
+                      {/* Actions — shown for pending and confirmed bookings */}
+                      {booking.status !== 'cancelled' && (
                         <div className="flex-shrink-0 flex flex-col items-end gap-2">
-                          {/* Cancel action */}
-                          {confirmingId === booking.id ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-zinc-400 text-xs">Cancel this booking?</span>
+
+                          {/* Pending: Confirm + Decline */}
+                          {booking.status === 'pending' && (
+                            <>
                               <button
-                                onClick={() => handleCancel(booking.id)}
-                                disabled={cancellingId === booking.id}
-                                className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                onClick={() => handleConfirmBooking(booking.id)}
+                                disabled={approvingBookingId === booking.id}
+                                className="text-xs bg-green-500/20 hover:bg-green-500/30 text-green-400 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
                               >
-                                {cancellingId === booking.id ? 'Cancelling…' : 'Yes, cancel'}
+                                {approvingBookingId === booking.id ? 'Confirming…' : 'Confirm booking'}
                               </button>
-                              <button
-                                onClick={() => setConfirmingId(null)}
-                                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-                              >
-                                Keep
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                setConfirmingId(booking.id);
-                                setReschedulingId(null);
-                              }}
-                              className="text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 px-3 py-1.5 rounded-lg transition-colors"
-                            >
-                              Cancel booking
-                            </button>
+                              {/* Decline reuses the cancel endpoint — same outcome */}
+                              {confirmingId === booking.id ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-zinc-400 text-xs">Decline this request?</span>
+                                  <button
+                                    onClick={() => handleCancel(booking.id)}
+                                    disabled={cancellingId === booking.id}
+                                    className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                  >
+                                    {cancellingId === booking.id ? 'Declining…' : 'Yes, decline'}
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmingId(null)}
+                                    className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                                  >
+                                    Keep
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setConfirmingId(booking.id)}
+                                  className="text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 px-3 py-1.5 rounded-lg transition-colors"
+                                >
+                                  Decline
+                                </button>
+                              )}
+                            </>
                           )}
 
-                          {/* Reschedule toggle */}
-                          <button
-                            onClick={() => {
-                              setReschedulingId(reschedulingId === booking.id ? null : booking.id);
-                              setConfirmingId(null);
-                            }}
-                            className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
-                              reschedulingId === booking.id
-                                ? 'bg-yellow-400/20 text-yellow-400'
-                                : 'bg-zinc-700 hover:bg-zinc-600 text-zinc-300'
-                            }`}
-                          >
-                            {reschedulingId === booking.id ? 'Close' : 'Reschedule'}
-                          </button>
+                          {/* Confirmed: Cancel + Reschedule */}
+                          {booking.status === 'confirmed' && (
+                            <>
+                              {confirmingId === booking.id ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-zinc-400 text-xs">Cancel this booking?</span>
+                                  <button
+                                    onClick={() => handleCancel(booking.id)}
+                                    disabled={cancellingId === booking.id}
+                                    className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-400 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                  >
+                                    {cancellingId === booking.id ? 'Cancelling…' : 'Yes, cancel'}
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmingId(null)}
+                                    className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                                  >
+                                    Keep
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setConfirmingId(booking.id);
+                                    setReschedulingId(null);
+                                  }}
+                                  className="text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 px-3 py-1.5 rounded-lg transition-colors"
+                                >
+                                  Cancel booking
+                                </button>
+                              )}
+                              <button
+                                onClick={() => {
+                                  setReschedulingId(reschedulingId === booking.id ? null : booking.id);
+                                  setConfirmingId(null);
+                                }}
+                                className={`text-xs px-3 py-1.5 rounded-lg transition-colors ${
+                                  reschedulingId === booking.id
+                                    ? 'bg-yellow-400/20 text-yellow-400'
+                                    : 'bg-zinc-700 hover:bg-zinc-600 text-zinc-300'
+                                }`}
+                              >
+                                {reschedulingId === booking.id ? 'Close' : 'Reschedule'}
+                              </button>
+                            </>
+                          )}
+
                         </div>
                       )}
                     </div>

@@ -33,7 +33,7 @@ model Booking {
   phone                String?
   message              String?
   slotTime             DateTime  @unique // @unique enforces DB-level double-booking protection
-  status               String    @default("confirmed")
+  status               String    @default("pending")
   googleEventId        String?   // null if calendar event creation failed (non-fatal)
   reminderSentAt       DateTime? // stamped after the 24h reminder email is sent; null = not yet sent
   reviewRequestSentAt  DateTime? // stamped after the post-session review request email is sent

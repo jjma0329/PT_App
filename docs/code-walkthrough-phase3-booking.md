@@ -8,7 +8,8 @@
 
 The complete end-to-end booking experience:
 - A 4-step UI wizard (date → time → form → confirmation)
-- A backend endpoint that saves the booking, creates a Google Calendar event, and sends emails to both the visitor and the trainer
+- A backend endpoint that saves the booking as **pending**, sends a "request received" email to the client, and notifies the trainer
+- A trainer confirm action that moves the booking to **confirmed**, creates the Google Calendar event, and sends the client their confirmation email
 - Two-layer double-booking protection
 - Rate limiting on all API routes
 
@@ -35,17 +36,21 @@ Express Server (server/app.ts)
                                 │ POST /api/bookings (public)
                                 │ 1. Validate: name, email, slotTime required
                                 │ 2. Check: is slot already booked? (API-level)
-                                │ 3. Save:   prisma.booking.create()
+                                │ 3. Save:   prisma.booking.create() → status: "pending"
                                 │               └── PostgreSQL (Booking table)
                                 │               └── @unique on slotTime = DB-level guard
-                                │ 4. (non-fatal) Create Google Calendar event
+                                │ 4. (non-fatal) Send emails
+                                │       └── server/services/emailService.ts
+                                │               ├── sendBookingRequestReceived() → visitor
+                                │               └── sendBookingNotification() → trainer
+                                │
+                                │ PATCH /api/bookings/:id/confirm (requireJwt)
+                                │ 1. Set status: "confirmed"
+                                │ 2. (non-fatal) Create Google Calendar event
                                 │       └── server/services/calendarService.ts
                                 │               └── createCalendarEvent()
                                 │                       └── Google Calendar API
-                                │ 5. (non-fatal) Send emails
-                                │       └── server/services/emailService.ts
-                                │               ├── sendBookingConfirmation() → visitor
-                                │               └── sendBookingNotification() → trainer
+                                │ 3. (non-fatal) sendBookingConfirmation() → visitor
                                 │
                                 │ PATCH /api/bookings/:id/cancel (requireJwt)
                                 │ PATCH /api/bookings/:id/reschedule (requireJwt)
@@ -62,13 +67,13 @@ Express Server (server/app.ts)
 | File | What changed |
 |------|-------------|
 | `prisma/schema.prisma` | Added `Booking` model with `@unique` on `slotTime`; `googleEventId String?` for cancellation |
-| `server/routes/bookings.ts` | New file — GET, POST, PATCH /:id/cancel, PATCH /:id/reschedule |
-| `server/controllers/bookingController.ts` | `createBooking`, `getBookings`, `cancelBooking`, `rescheduleBooking` |
+| `server/routes/bookings.ts` | New file — GET, POST, PATCH /:id/cancel, PATCH /:id/reschedule, PATCH /:id/confirm |
+| `server/controllers/bookingController.ts` | `createBooking`, `getBookings`, `cancelBooking`, `rescheduleBooking`, `confirmBooking` |
 | `server/middleware/requireJwt.ts` | New file — JWT guard for trainer-only routes |
 | `server/app.ts` | New file — Express app, middleware, and all route mounts (split from `index.ts`) |
 | `server/index.ts` | Now only: start server + run hourly cron jobs for reminders and review requests |
 | `server/services/calendarService.ts` | Added `createCalendarEvent()` (returns event ID), `deleteCalendarEvent()` |
-| `server/services/emailService.ts` | Added `sendBookingConfirmation()`, `sendBookingNotification()`, `sendCancellationNotification()` |
+| `server/services/emailService.ts` | Added `sendBookingRequestReceived()`, `sendBookingConfirmation()`, `sendBookingNotification()`, `sendCancellationNotification()` |
 | `src/components/BookingModal.tsx` | New file — the entire 4-step booking UI |
 | `src/pages/LandingPage.tsx` | Moved modal state here from `App.tsx` when router was introduced |
 
@@ -84,7 +89,7 @@ model Booking {
   phone                String?
   message              String?
   slotTime             DateTime  @unique
-  status               String    @default("confirmed")
+  status               String    @default("pending")
   googleEventId        String?
   reminderSentAt       DateTime?
   reviewRequestSentAt  DateTime?
@@ -100,7 +105,7 @@ The most important field is `slotTime @unique`. The `@unique` constraint means t
 
 - `String?` — the `?` means nullable/optional, same as `Optional[str]` in Python
 - `@unique` — creates a unique index in PostgreSQL. Attempting to insert a duplicate raises a database error with code `P2002`
-- `status` — `"confirmed"` by default, set to `"cancelled"` when the trainer cancels
+- `status` — `"pending"` by default (awaiting trainer approval); becomes `"confirmed"` when the trainer confirms via the admin UI, or `"cancelled"` when declined/cancelled
 - `googleEventId` — the Google Calendar event ID returned when the event is created. Stored so it can be deleted if the booking is cancelled. Nullable because calendar creation is non-fatal — if it fails, we have no ID to store.
 - `reminderSentAt` / `reviewRequestSentAt` — cron job sentinel fields; `null` means the email hasn't been sent yet. The hourly cron filters on `reminderSentAt: null` to find bookings that need a reminder.
 
@@ -273,7 +278,7 @@ Public routes (POST /api/bookings, GET /api/slots) skip requireJwt entirely.
 
 ```ts
 import { Router } from 'express';
-import { getBookings, createBooking, cancelBooking, rescheduleBooking } from '../controllers/bookingController.ts';
+import { getBookings, createBooking, cancelBooking, rescheduleBooking, confirmBooking } from '../controllers/bookingController.ts';
 import { requireJwt } from '../middleware/requireJwt.ts';
 
 const router = Router();
@@ -290,6 +295,9 @@ router.patch('/:id/cancel', requireJwt, cancelBooking);
 // PATCH /api/bookings/:id/reschedule — trainer-only, requires valid JWT
 router.patch('/:id/reschedule', requireJwt, rescheduleBooking);
 
+// PATCH /api/bookings/:id/confirm — trainer-only, requires valid JWT
+router.patch('/:id/confirm', requireJwt, confirmBooking);
+
 export default router;
 ```
 
@@ -299,6 +307,7 @@ Routes only map URLs to handlers — logic lives in the controller. When mounted
 - `POST /api/bookings` → open (rate-limited) → `createBooking`
 - `PATCH /api/bookings/:id/cancel` → JWT check → `cancelBooking`
 - `PATCH /api/bookings/:id/reschedule` → JWT check → `rescheduleBooking`
+- `PATCH /api/bookings/:id/confirm` → JWT check → `confirmBooking`
 
 Express route definitions accept multiple handler arguments: `router.get('/', middlewareA, middlewareB, handler)`. They run in order — if `middlewareA` sends a response (like a 401), `middlewareB` and `handler` never run.
 
@@ -383,6 +392,47 @@ export async function cancelBooking(req: Request, res: Response): Promise<void> 
 
 **Why check `googleEventId` before deleting?**
 Calendar event creation is non-fatal. If it failed when the booking was created, `googleEventId` is `null` — there's nothing to delete and we skip the call entirely.
+
+---
+
+### `confirmBooking` — PATCH /api/bookings/:id/confirm
+
+Called when the trainer clicks "Confirm booking" in the admin UI. This is the second half of the two-step booking flow — it finalizes a `"pending"` booking.
+
+```ts
+export async function confirmBooking(req: Request, res: Response): Promise<void> {
+  const booking = await prisma.booking.findUnique({ where: { id } });
+  if (!booking) { ... }                          // 404 if not found
+  if (booking.status !== 'pending') { ... }      // 409 — only pending bookings can be confirmed
+
+  // Flip status to confirmed — source of truth
+  const updated = await prisma.booking.update({
+    where: { id },
+    data: { status: 'confirmed' },
+  });
+
+  // Create Google Calendar event — deferred from createBooking, non-fatal
+  try {
+    const googleEventId = await createCalendarEvent(updated);
+    if (googleEventId) {
+      await prisma.booking.update({ where: { id }, data: { googleEventId } });
+    }
+  } catch (calErr) { console.error(...); }
+
+  // Send confirmation email to the client — non-fatal
+  try {
+    await sendBookingConfirmation(updated);
+  } catch (emailErr) { console.error(...); }
+
+  res.json({ success: true, data: updated });
+}
+```
+
+**Why is the calendar event created here, not in `createBooking`?**
+Until the trainer confirms, the booking is speculative — the slot is held but not approved. Creating a Google Calendar event before approval would clutter the trainer's calendar with unreviewed requests. By deferring to `confirmBooking`, the calendar only reflects real, approved sessions.
+
+**Why can only `"pending"` bookings be confirmed?**
+The `status !== 'pending'` guard prevents double-confirmation. If a booking is already `"confirmed"`, calling this endpoint again would re-create a second calendar event and re-send the confirmation email.
 
 ---
 
@@ -560,32 +610,20 @@ After passing both validations, the booking is saved. At this point the slot is 
 - `email.trim().toLowerCase()` — normalize email addresses. `"User@Example.COM"` and `"user@example.com"` are the same address.
 - `phone?.trim() || null` — optional field: trim if present, otherwise store `null` (not an empty string).
 
-### Stage 4: Google Calendar Event (Non-Fatal)
+### Stage 4: Emails (Non-Fatal)
 
 ```ts
 try {
-  await createCalendarEvent(booking);
-} catch (calErr) {
-  console.error('Google Calendar event creation failed:', calErr);
-}
-```
-
-Wrapped in its own isolated `try/catch`. If the Google API is down or the token expired, **the booking is not undone** — it's already saved to the database. The trainer might need to manually add it to their calendar in the rare case this fails, but the visitor's booking is secure.
-
-**This is an intentional design choice:** the booking record is the source of truth. The calendar event is a convenience, not a dependency.
-
-### Stage 5: Confirmation Emails (Non-Fatal)
-
-```ts
-try {
-  await sendBookingConfirmation(booking);
-  await sendBookingNotification(booking);
+  await sendBookingRequestReceived(booking); // "we received your request" → client
+  await sendBookingNotification(booking);    // full details → trainer
 } catch (emailErr) {
   console.error('Booking emails failed:', emailErr);
 }
 ```
 
-Same pattern — separate `try/catch`, non-fatal. If Resend is unreachable, the booking still succeeds.
+At this stage the booking is `"pending"`. The client gets a holding email ("we'll confirm shortly"), and the trainer gets a notification so they can review the request in the admin dashboard.
+
+**What's deferred:** the confirmation email and the Google Calendar event are NOT created here — they only happen when the trainer hits "Confirm booking" in the admin UI. This keeps the client's inbox clean and the calendar free of unreviewed bookings.
 
 ### The Response — Safe Fields Only
 
@@ -666,7 +704,7 @@ Returns `null` (not throws) if Google doesn't return an ID — keeps the call si
 
 3. `descriptionLines` — builds the event description from available booking fields. Only includes phone and notes if they were provided. `.filter((line): line is string => line !== null)` removes the `null` entries from the array. The `: line is string` part is a TypeScript **type guard** — it tells TypeScript that after filtering, the array only contains strings, not `string | null`.
 
-4. `calendar.events.insert(...)` — creates the event on the trainer's primary calendar. The `attendees` array adds the client — Google will send them a calendar invite to their email.
+4. `calendar.events.insert(...)` — creates the event on the trainer's primary calendar. `sendUpdates: 'all'` tells Google to email a proper calendar invite (with Accept / Decline / Maybe) to every attendee. Without this, Google's API defaults to `'none'`, which adds the client to the event silently — they'd only see a reminder, not an actionable invite. The `attendees` array sets who gets that invite.
 
 5. `response.data.id ?? null` — the `??` (nullish coalescing) operator returns the right side only if the left is `null` or `undefined`. Like Python's `response.data.get('id') or None`.
 
@@ -724,9 +762,18 @@ const FROM_ADDRESS = process.env.RESEND_FROM_EMAIL ?? 'JJM Fitness <onboarding@r
 
 Every outbound email uses this constant as the `from` field. By reading from `RESEND_FROM_EMAIL` in `.env`, the sender can be overridden per environment without touching code. The fallback (`onboarding@resend.dev`) is Resend's shared sandbox address for development. In production, set `RESEND_FROM_EMAIL` to your verified domain (e.g. `JJM Fitness <noreply@jjmfitness.com>`) to avoid spam filters and present a professional sender.
 
-### `sendBookingConfirmation(booking)` — To the Visitor
+### `sendBookingRequestReceived(booking)` — To the Client on Submission
 
-Sends a confirmation email to the client's address with:
+Sent immediately when the client submits the booking form, before the trainer has reviewed it. Tells them:
+- The session time they requested
+- Their booking details
+- That the trainer will confirm shortly
+
+This is the "holding" email — it acknowledges the request without over-promising. The client gets a second email (`sendBookingConfirmation`) once the trainer approves.
+
+### `sendBookingConfirmation(booking)` — To the Visitor on Confirm
+
+Sends the full confirmation email to the client's address once the trainer approves:
 - The confirmed session date/time
 - A summary of their booking details
 - A note to contact the trainer to cancel/reschedule

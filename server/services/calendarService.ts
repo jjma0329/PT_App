@@ -225,12 +225,15 @@ export async function createCalendarEvent(booking: BookingForCalendar): Promise<
 
   const response = await calendar.events.insert({
     calendarId: 'primary',
+    // 'all' tells Google to email the invite to every attendee —
+    // the client will see Accept / Decline / Maybe in the email.
+    // Default is 'none', which silently adds them without sending an invite.
+    sendUpdates: 'all',
     requestBody: {
       summary: `PT Session — ${booking.name}`,
       description: descriptionLines.join('\n'),
       start: { dateTime: booking.slotTime.toISOString() },
       end: { dateTime: sessionEnd.toISOString() },
-      // Adds the client as an attendee so Google sends them a calendar invite
       attendees: [{ email: booking.email, displayName: booking.name }],
     },
   });

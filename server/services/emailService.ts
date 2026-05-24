@@ -50,7 +50,31 @@ function formatSlotTime(date: Date): string {
   });
 }
 
-// Sent to the visitor after a successful booking.
+// Sent to the client immediately after they submit a booking request (before trainer confirms).
+export async function sendBookingRequestReceived(booking: BookingDetails): Promise<void> {
+  const formattedTime = formatSlotTime(booking.slotTime);
+
+  await resend.emails.send({
+    from: FROM_ADDRESS,
+    to: booking.email,
+    subject: `Booking request received — ${formattedTime}`,
+    html: `
+      <h2>Request received!</h2>
+      <p>Hi ${escapeHtml(booking.name)},</p>
+      <p>We've received your request for a personal training session on:</p>
+      <p><strong>${escapeHtml(formattedTime)}</strong></p>
+      <table cellpadding="8" style="border-collapse:collapse;font-family:sans-serif;font-size:15px;">
+        <tr><td><strong>Name</strong></td><td>${escapeHtml(booking.name)}</td></tr>
+        <tr><td><strong>Email</strong></td><td>${escapeHtml(booking.email)}</td></tr>
+        <tr><td><strong>Phone</strong></td><td>${safeField(booking.phone)}</td></tr>
+      </table>
+      <p>We'll review your request and send a confirmation shortly.</p>
+      <p style="color:#71717a;font-size:13px;">If you did not make this request, please ignore this email.</p>
+    `,
+  });
+}
+
+// Sent to the visitor after the trainer confirms their booking.
 export async function sendBookingConfirmation(booking: BookingDetails): Promise<void> {
   const formattedTime = formatSlotTime(booking.slotTime);
 

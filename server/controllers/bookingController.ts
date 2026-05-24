@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma.ts';
 import { createCalendarEvent, deleteCalendarEvent } from '../services/calendarService.ts';
-import { sendBookingConfirmation, sendBookingNotification, sendCancellationNotification, sendClientCancellationEmail } from '../services/emailService.ts';
+import { sendBookingRequestReceived, sendBookingConfirmation, sendBookingNotification, sendCancellationNotification, sendClientCancellationEmail } from '../services/emailService.ts';
 
 // Returns true if the error is a Prisma unique constraint violation (P2002).
 // This is the DB-level double-booking protection — it fires if two requests
@@ -107,24 +107,10 @@ export async function createBooking(req: Request, res: Response): Promise<void> 
       },
     });
 
-    // Create a Google Calendar event and store its ID — non-fatal.
-    // The booking is already saved; a calendar failure doesn't roll it back.
-    // We store the event ID so we can delete the event if the booking is cancelled.
+    // Send "request received" email to client + notification to trainer — non-fatal.
+    // Confirmation email and calendar event are deferred until the trainer confirms.
     try {
-      const googleEventId = await createCalendarEvent(booking);
-      if (googleEventId) {
-        await prisma.booking.update({
-          where: { id: booking.id },
-          data: { googleEventId },
-        });
-      }
-    } catch (calErr) {
-      console.error('Google Calendar event creation failed:', calErr);
-    }
-
-    // Send confirmation to visitor + notification to trainer — also non-fatal.
-    try {
-      await sendBookingConfirmation(booking);
+      await sendBookingRequestReceived(booking);
       await sendBookingNotification(booking);
     } catch (emailErr) {
       console.error('Booking emails failed:', emailErr);
@@ -332,5 +318,65 @@ export async function cancelBooking(req: Request, res: Response): Promise<void> 
   } catch (err) {
     console.error('cancelBooking error:', err);
     res.status(500).json({ success: false, error: 'Failed to cancel booking.' });
+  }
+}
+
+// PATCH /api/bookings/:id/confirm
+// Moves a booking from "pending" to "confirmed":
+//   1. Creates the Google Calendar event (deferred from createBooking)
+//   2. Sends the confirmation email to the client
+// Protected by requireJwt — trainer use only.
+export async function confirmBooking(req: Request, res: Response): Promise<void> {
+  const id = parseInt(req.params.id, 10);
+
+  if (isNaN(id)) {
+    res.status(400).json({ success: false, error: 'Invalid booking ID.' });
+    return;
+  }
+
+  try {
+    const booking = await prisma.booking.findUnique({ where: { id } });
+
+    if (!booking) {
+      res.status(404).json({ success: false, error: 'Booking not found.' });
+      return;
+    }
+
+    if (booking.status !== 'pending') {
+      res.status(409).json({ success: false, error: 'Only pending bookings can be confirmed.' });
+      return;
+    }
+
+    // Mark as confirmed — this is the source of truth
+    const updated = await prisma.booking.update({
+      where: { id },
+      data: { status: 'confirmed' },
+    });
+
+    // Create the Google Calendar event now that the booking is confirmed — non-fatal.
+    try {
+      const googleEventId = await createCalendarEvent(updated);
+      if (googleEventId) {
+        await prisma.booking.update({
+          where: { id },
+          data: { googleEventId },
+        });
+        updated.googleEventId = googleEventId;
+      }
+    } catch (calErr) {
+      console.error('Google Calendar event creation failed during confirm:', calErr);
+    }
+
+    // Send the confirmation email to the client — non-fatal.
+    try {
+      await sendBookingConfirmation(updated);
+    } catch (emailErr) {
+      console.error('Booking confirmation email failed:', emailErr);
+    }
+
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error('confirmBooking error:', err);
+    res.status(500).json({ success: false, error: 'Failed to confirm booking.' });
   }
 }

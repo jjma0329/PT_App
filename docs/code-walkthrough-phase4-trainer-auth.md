@@ -12,7 +12,7 @@ A login system for the trainer and a protected admin dashboard. Before this phas
 2. Server verifies credentials against `.env`-stored values and returns a signed JWT
 3. Frontend stores the JWT in `localStorage` and attaches it as a `Bearer` token on every admin API call
 4. `requireJwt` middleware verifies the token on protected routes
-5. The admin dashboard lets the trainer view, filter, and cancel bookings
+5. The admin dashboard lets the trainer view, filter, confirm, and cancel bookings
 
 ---
 
@@ -34,6 +34,12 @@ src/App.tsx                       server/app.ts
         AdminPage.tsx
           authHeaders() ----------> GET  /api/bookings       (requireJwt)
                                     PATCH /api/bookings/:id/cancel  (requireJwt)
+
+          handleReconnectGoogle()    GET /auth/google/url    (requireJwt)
+            fetch('/auth/google/url') -> authController.getAuthUrlForClient
+            window.location.href = url  (browser navigates to Google consent screen)
+                                    GET /auth/google/callback
+                                      -> saveTokensFromCode() -> DB
 ```
 
 **Key relationships:**
@@ -53,11 +59,14 @@ src/App.tsx                       server/app.ts
 | `src/lib/auth.ts` | Client-side JWT helpers (get, set, remove, check expiry) |
 | `src/components/ProtectedRoute.tsx` | Frontend route guard — redirects to login if no valid token |
 | `src/pages/admin/AdminLoginPage.tsx` | Login form UI |
-| `src/pages/admin/AdminPage.tsx` | Admin dashboard — bookings list, filter, cancel |
+| `src/pages/admin/AdminPage.tsx` | Admin dashboard — bookings list, filter, confirm, cancel |
 
 **Files changed:**
 - `server/app.ts` — registers `trainerAuthRouter` at `/api/auth`
 - `server/routes/bookings.ts` — adds `requireJwt` to `GET /api/bookings` and `PATCH` routes
+- `server/controllers/authController.ts` — added `getAuthUrlForClient` (returns auth URL as JSON)
+- `server/routes/auth.ts` — added `GET /google/url` route using `getAuthUrlForClient`
+- `src/pages/admin/AdminPage.tsx` — added "Reconnect Google Calendar" button in header
 
 ---
 
@@ -364,12 +373,13 @@ UI state:
   view: 'bookings' | 'testimonials'   which tab is active
 
 Bookings state:
-  bookings[]         raw data from API
-  filter             'all' | 'confirmed' | 'cancelled'
-  loading / error    fetch lifecycle
-  confirmingId       which booking is showing inline cancel confirm
-  cancellingId       which booking is mid-cancel request
-  reschedulingId     which booking has the reschedule panel open
+  bookings[]           raw data from API
+  filter               'all' | 'pending' | 'confirmed' | 'cancelled'
+  loading / error      fetch lifecycle
+  confirmingId         which booking is showing inline cancel/decline confirm
+  cancellingId         which booking is mid-cancel request
+  approvingBookingId   which pending booking is mid-confirm request
+  reschedulingId       which booking has the reschedule panel open
 
 Testimonials state:
   testimonials[]           raw data from API
@@ -405,6 +415,16 @@ const filtered = filter === 'all' ? bookings : bookings.filter(b => b.status ===
 ```
 
 Filtering happens entirely on the frontend — no new API call for each filter change. All bookings are fetched once and the UI filters the local array. This is fast and avoids unnecessary server round-trips.
+
+### Booking actions by status
+
+**Pending bookings** show two actions:
+- **Confirm booking** — calls `handleConfirmBooking()` → `PATCH /api/bookings/:id/confirm`. Updates status to `"confirmed"`, creates the Google Calendar event, and sends the client their confirmation email. Uses `approvingBookingId` as a loading state.
+- **Decline** — same two-step pattern as cancel. Reuses `handleCancel()` → `PATCH /api/bookings/:id/cancel`. Labelled "Decline" instead of "Cancel" since the session was never confirmed.
+
+**Confirmed bookings** show:
+- **Cancel booking** — two-step inline confirm (see below)
+- **Reschedule** — opens the ReschedulePanel inline
 
 ### Cancel confirm pattern
 
